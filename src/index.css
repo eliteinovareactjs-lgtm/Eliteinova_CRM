@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+/* ============================================
+   BRAND THEME — Tailwind v4 tokens
+   ============================================ */
+@theme {
+  /* Colors */
+  --color-brand-magenta: #E31C79;
+  --color-brand-rose: #F0388A;
+  --color-brand-purple: #8B2FD6;
+  --color-brand-violet: #6D28D9;
+  --color-brand-deep: #4C1D95;
+  --color-brand-ink: #241238;
+  --color-brand-mist: #FBF2FA;
+  --color-brand-lilac: #F1E4FB;
+
+  /* Fonts */
+  --font-display: "Poppins", sans-serif;
+  --font-body: "Inter", sans-serif;
+
+  /* Shadows */
+  --shadow-panel: 0 20px 60px -15px rgba(139, 47, 214, 0.25);
+  --shadow-card: 0 10px 30px -12px rgba(139, 47, 214, 0.18);
+
+  /* Radius */
+  --radius-xl2: 1.25rem;
+
+  /* Background images as custom properties */
+  --background-image-brand-gradient: linear-gradient(135deg, #F3D9EE 0%, #E9D3F6 45%, #D9CFF7 100%);
+  --background-image-brand-gradient-dark: linear-gradient(120deg, #7B1FA2 0%, #C2185B 100%);
+  --background-image-brand-button: linear-gradient(90deg, #8B2FD6 0%, #E31C79 100%);
+  --background-image-brand-ring: conic-gradient(from 180deg, #E31C79, #8B2FD6, #E31C79);
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+html, body {
+  height: 100%;
+}
+
+body {
+  @apply bg-brand-mist text-brand-ink antialiased;
+  font-family: var(--font-body);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #E31C79, #8B2FD6);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+}
+
+/* ============================================
+   COMPONENT CLASSES
+   ============================================ */
+@layer components {
+  .nav-link {
+    @apply flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-brand-ink/60 transition-colors hover:bg-brand-lilac hover:text-brand-purple;
+  }
+  .nav-link-active {
+    @apply bg-gradient-to-r from-brand-purple to-brand-magenta text-white shadow-card hover:text-white;
+  }
+  .card {
+    @apply rounded-xl2 border border-brand-lilac/70 bg-white p-5 shadow-card;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-card transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60 disabled:hover:scale-100;
+    background-image: linear-gradient(90deg, #8B2FD6 0%, #E31C79 100%);
+  }
+  .btn-pill {
+    @apply inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold text-white shadow-card;
+    background-image: linear-gradient(90deg, #8B2FD6 0%, #E31C79 100%);
+  }
+  .input-field {
+    @apply w-full rounded-xl border border-brand-lilac bg-white/70 py-3 pl-11 pr-4 text-sm text-brand-ink placeholder:text-brand-ink/40 outline-none transition focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20;
+  }
+  .pill-tab {
+    @apply flex-1 rounded-full py-2 text-center text-sm font-semibold transition-colors;
+  }
+  .pill-tab-active {
+    @apply text-white shadow-card;
+    background-image: linear-gradient(90deg, #8B2FD6 0%, #E31C79 100%);
+  }
+  .pill-tab-inactive {
+    @apply text-brand-ink/50 hover:text-brand-ink;
+  }
+}
