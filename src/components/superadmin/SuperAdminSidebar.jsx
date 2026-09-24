@@ -1,23 +1,65 @@
+// src/components/superadmin/SuperAdminSidebar.jsx
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Phone, Users, ClipboardList, BarChart3, Settings, Globe } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import {
+  LayoutDashboard, Globe, Users, ClipboardList, BarChart3, Settings,
+  Phone, UserCog, Megaphone, Calendar, MessageSquare, Coins, Plug,
+  Lock, FileText, PhoneCall, Building2,
+} from 'lucide-react';
 
-const NAV = [
-  { to: '/superadmin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/superadmin/websites', label: 'Websites', icon: Globe },
-  { to: '/superadmin/live-calls', label: 'Live Calls', icon: Phone },
-  { to: '/superadmin/agents', label: 'Agents', icon: Users },
-  { to: '/superadmin/leads', label: 'Leads & Logs', icon: ClipboardList },
-  { to: '/superadmin/reports', label: 'Reports', icon: BarChart3 },
-  { to: '/superadmin/settings', label: 'Settings', icon: Settings },
+const NAV_GROUPS = [
+  {
+    label: 'Overview',
+    items: [
+      { to: '/superadmin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Platform',
+    items: [
+      { to: '/superadmin/projects', label: 'Projects', icon: Globe },
+      { to: '/superadmin/admins', label: 'Administrators', icon: UserCog },
+      { to: '/superadmin/agents', label: 'Agents & Teams', icon: Users },
+      { to: '/superadmin/customers', label: 'Customers', icon: Building2 },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { to: '/superadmin/leads', label: 'Leads', icon: ClipboardList },
+      { to: '/superadmin/calling', label: 'Calling', icon: Phone },
+      { to: '/superadmin/ivr', label: 'IVR Management', icon: PhoneCall },
+      { to: '/superadmin/campaigns', label: 'Campaigns', icon: Megaphone },
+      { to: '/superadmin/follow-ups', label: 'Follow-Ups', icon: Calendar },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { to: '/superadmin/communication', label: 'Communication', icon: MessageSquare },
+      { to: '/superadmin/credits', label: 'Credits & Usage', icon: Coins },
+      { to: '/superadmin/integrations', label: 'Integrations', icon: Plug },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { to: '/superadmin/reports', label: 'Reports', icon: BarChart3 },
+      { to: '/superadmin/security', label: 'Security', icon: Lock },
+      { to: '/superadmin/logs', label: 'System Logs', icon: FileText },
+      { to: '/superadmin/settings', label: 'Settings', icon: Settings },
+    ],
+  },
 ];
 
 export default function SuperAdminSidebar({ open, onClose }) {
-  const { role } = useAuth();
-
   return (
     <>
-      {open && <div className="fixed inset-0 z-30 bg-black/30 md:hidden" onClick={onClose} />}
+      {open && (
+        <div
+          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+          onClick={onClose}
+        />
+      )}
       <aside
         className={`fixed z-40 flex h-screen w-64 flex-col border-r border-brand-lilac bg-white transition-transform md:sticky md:top-0 md:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
@@ -37,24 +79,30 @@ export default function SuperAdminSidebar({ open, onClose }) {
           </div>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-4 pb-6">
-          {NAV.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={onClose}
-              className={({ isActive }) => `nav-link ${isActive ? 'nav-link-active' : ''}`}
-            >
-              <Icon size={18} />
-              {label}
-            </NavLink>
+        <nav className="flex-1 space-y-4 overflow-y-auto px-4 pb-6">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label}>
+              <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-brand-ink/40">
+                {group.label}
+              </p>
+              <div className="space-y-1">
+                {group.items.map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    onClick={onClose}
+                    className={({ isActive }) =>
+                      `nav-link ${isActive ? 'nav-link-active' : ''}`
+                    }
+                  >
+                    <Icon size={18} />
+                    {label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
-
-        <div className="mx-4 mb-6 rounded-xl bg-brand-lilac/50 p-4 text-xs text-brand-ink/60">
-          <p className="font-semibold text-brand-ink">Role: {role}</p>
-          <p className="mt-1">Full access across every website.</p>
-        </div>
       </aside>
     </>
   );

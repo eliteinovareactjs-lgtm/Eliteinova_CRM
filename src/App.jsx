@@ -11,16 +11,27 @@ import SuperAdminLayout from './components/superadmin/SuperAdminLayout';
 import AdminLayout from './components/admin/AdminLayout';
 import AgentLayout from './components/agent/AgentLayout';
 
-// Super Admin Pages
+// ==================== SUPER ADMIN PAGES ====================
 import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
-import Websites from './pages/superadmin/Websites';
+import Projects from './pages/superadmin/Projects';
+import Admins from './pages/superadmin/Admins';
 import SuperAdminAgents from './pages/superadmin/Agents';
+import Customers from './pages/superadmin/Customers';
 import SuperAdminLeads from './pages/superadmin/Leads';
+import Calling from './pages/superadmin/Calling';
 import SuperAdminLiveCalls from './pages/superadmin/LiveCalls';
+import IVR from './pages/superadmin/IVR';
+import Campaigns from './pages/superadmin/Campaigns';
+import FollowUps from './pages/superadmin/FollowUps';
+import Communication from './pages/superadmin/Communication';
+import Credits from './pages/superadmin/Credits';
+import Integrations from './pages/superadmin/Integrations';
 import SuperAdminReports from './pages/superadmin/Reports';
+import Security from './pages/superadmin/Security';
+import Logs from './pages/superadmin/Logs';
 import SuperAdminSettings from './pages/superadmin/Settings';
 
-// Admin Pages
+// ==================== ADMIN PAGES ====================
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminAgents from './pages/admin/Agents';
 import AdminLeads from './pages/admin/Leads';
@@ -28,7 +39,7 @@ import AdminLiveCalls from './pages/admin/LiveCalls';
 import AdminReports from './pages/admin/Reports';
 import AdminSettings from './pages/admin/Settings';
 
-// Agent Pages
+// ==================== AGENT PAGES ====================
 import AgentDashboard from './pages/agent/AgentDashboard';
 import MyLeads from './pages/agent/MyLeads';
 import AgentLiveCalls from './pages/agent/LiveCalls';
@@ -54,12 +65,33 @@ export default function App() {
             }
           >
             <Route index element={<Navigate to="/superadmin/dashboard" replace />} />
+
+            {/* Overview */}
             <Route path="dashboard" element={<SuperAdminDashboard />} />
-            <Route path="websites" element={<Websites />} />
+
+            {/* Platform */}
+            <Route path="projects" element={<Projects />} />
+            <Route path="admins" element={<Admins />} />
             <Route path="agents" element={<SuperAdminAgents />} />
+            <Route path="customers" element={<Customers />} />
+
+            {/* Operations */}
             <Route path="leads" element={<SuperAdminLeads />} />
+            <Route path="calling" element={<Calling />} />
             <Route path="live-calls" element={<SuperAdminLiveCalls />} />
+            <Route path="ivr" element={<IVR />} />
+            <Route path="campaigns" element={<Campaigns />} />
+            <Route path="follow-ups" element={<FollowUps />} />
+
+            {/* Communication */}
+            <Route path="communication" element={<Communication />} />
+            <Route path="credits" element={<Credits />} />
+            <Route path="integrations" element={<Integrations />} />
+
+            {/* System */}
             <Route path="reports" element={<SuperAdminReports />} />
+            <Route path="security" element={<Security />} />
+            <Route path="logs" element={<Logs />} />
             <Route path="settings" element={<SuperAdminSettings />} />
           </Route>
 
