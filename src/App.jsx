@@ -35,9 +35,19 @@ import SuperAdminSettings from './pages/superadmin/Settings';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminAgents from './pages/admin/Agents';
 import AdminLeads from './pages/admin/Leads';
+import AdminCalling from './pages/admin/Calling';
+import AdminCampaigns from './pages/admin/Campaigns';
+import AdminCommunication from './pages/admin/Communication';
+import AdminFollowUps from './pages/admin/FollowUps';
+import AdminIntegrations from './pages/admin/Integrations';
+import AdminIVR from './pages/admin/IVR';
+import AdminLeadConfig from './pages/admin/LeadConfig';
 import AdminLiveCalls from './pages/admin/LiveCalls';
+import AdminProjectSettings from './pages/admin/ProjectSettings';
 import AdminReports from './pages/admin/Reports';
 import AdminSettings from './pages/admin/Settings';
+import AdminTasks from './pages/admin/Tasks';
+import AdminAccount from './pages/admin/Account';
 
 // ==================== AGENT PAGES ====================
 import AgentDashboard from './pages/agent/AgentDashboard';
@@ -108,9 +118,19 @@ export default function App() {
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="agents" element={<AdminAgents />} />
             <Route path="leads" element={<AdminLeads />} />
+            <Route path="calling" element={<AdminCalling />} />
+            <Route path="campaigns" element={<AdminCampaigns />} />
+            <Route path="communication" element={<AdminCommunication />} />
+            <Route path="follow-ups" element={<AdminFollowUps />} />
+            <Route path="integrations" element={<AdminIntegrations />} />
+            <Route path="ivr" element={<AdminIVR />} />
+            <Route path="lead-config" element={<AdminLeadConfig />} />
             <Route path="live-calls" element={<AdminLiveCalls />} />
+            <Route path="project-settings" element={<AdminProjectSettings />} />
             <Route path="reports" element={<AdminReports />} />
             <Route path="settings" element={<AdminSettings />} />
+            <Route path="tasks" element={<AdminTasks />} />
+            <Route path="account" element={<AdminAccount />} />
           </Route>
 
           {/* ==================== AGENT ==================== */}
