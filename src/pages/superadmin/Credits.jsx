@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import {
   Coins, TrendingUp, TrendingDown, Plus, X, Search, Filter, Building2,
-  ChevronDown, MoreVertical, Eye, Trash2, Download, BarChart3, Percent,
+  ChevronDown, Eye, Trash2, Download, BarChart3, Percent,
   Layers, Tag, ClipboardList, FileText, Info, AlertCircle, CheckCircle2,
   DollarSign, Zap, Star, MessageSquare, MessageCircle, Phone, PhoneCall,
   Mic, Mail, Smartphone, Users, User as UserIcon, ArrowUpRight,
@@ -35,27 +35,46 @@ const SERVICES = [
 
 const LOW_BALANCE_THRESHOLD = 1000; // credits
 
+/* ✅ FIX: numeric-safe formatter — never throws on undefined/null */
+const num = (v) => (typeof v === 'number' && !isNaN(v) ? v : 0);
+const fmt = (v) => num(v).toLocaleString();
+
+/* ✅ FIX: normalize a credit entry so all fields exist as numbers */
+const normalizeCredit = (c) => {
+  const used = num(c.used);
+  const balance = num(c.balance);
+  const limit = num(c.limit) || used + balance;
+  return {
+    ...c,
+    used,
+    balance,
+    limit,
+    usage: {
+      SMS: num(c.usage?.SMS) || Math.round(used * 0.35),
+      WhatsApp: num(c.usage?.WhatsApp) || Math.round(used * 0.25),
+      'Voice Calls': num(c.usage?.['Voice Calls']) || Math.round(used * 0.2),
+      IVR: num(c.usage?.IVR) || Math.round(used * 0.1),
+      Email: num(c.usage?.Email) || Math.round(used * 0.05),
+      Other: num(c.usage?.Other) || Math.round(used * 0.05),
+    },
+  };
+};
+
 export default function Credits() {
   const { role, activeWebsiteId } = useAuth();
   const isSuperAdmin = role === 'superadmin';
 
   /* ========== LOCAL DATA ========== */
-  const [projects, setProjects] = useState(
-    INITIAL_CREDITS.map((c) => ({
-      ...c,
-      // Simulated usage breakdown per service (mock)
-      usage: {
-        SMS: Math.round(c.used * 0.35),
-        WhatsApp: Math.round(c.used * 0.25),
-        'Voice Calls': Math.round(c.used * 0.2),
-        IVR: Math.round(c.used * 0.1),
-        Email: Math.round(c.used * 0.05),
-        Other: Math.round(c.used * 0.05),
-      },
-    }))
+  const [projects, setProjects] = useState(() =>
+    (INITIAL_CREDITS || []).map(normalizeCredit)
   );
 
-  const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
+  const [transactions, setTransactions] = useState(
+    (INITIAL_TRANSACTIONS || []).map((t) => ({
+      ...t,
+      amount: num(t.amount),
+    }))
+  );
 
   /* ========== FILTERS ========== */
   const [tab, setTab] = useState('overview');
@@ -91,17 +110,17 @@ export default function Credits() {
 
   /* ========== SUMMARY ========== */
   const summary = useMemo(() => {
-    const totalBalance = scopedProjects.reduce((s, c) => s + c.balance, 0);
-    const totalLimit = scopedProjects.reduce((s, c) => s + c.limit, 0);
-    const totalUsed = scopedProjects.reduce((s, c) => s + c.used, 0);
+    const totalBalance = scopedProjects.reduce((s, c) => s + num(c.balance), 0);
+    const totalLimit = scopedProjects.reduce((s, c) => s + num(c.limit), 0);
+    const totalUsed = scopedProjects.reduce((s, c) => s + num(c.used), 0);
     const usageRate =
       totalLimit > 0 ? Math.round((totalUsed / totalLimit) * 100) : 0;
     const lowBalanceProjects = scopedProjects.filter(
-      (p) => p.balance < LOW_BALANCE_THRESHOLD
+      (p) => num(p.balance) < LOW_BALANCE_THRESHOLD
     );
     const totalTopUps = transactions
       .filter((t) => t.type === 'topup')
-      .reduce((s, t) => s + t.amount, 0);
+      .reduce((s, t) => s + num(t.amount), 0);
     return {
       totalBalance,
       totalLimit,
@@ -132,7 +151,7 @@ export default function Credits() {
         return hay.includes(q);
       });
     }
-    return rows.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    return [...rows].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [
     transactions,
     isSuperAdmin,
@@ -148,7 +167,7 @@ export default function Credits() {
     const map = {};
     SERVICES.forEach((s) => {
       map[s.key] = scopedProjects.reduce(
-        (sum, p) => sum + (p.usage?.[s.key] || 0),
+        (sum, p) => sum + num(p.usage?.[s.key]),
         0
       );
     });
@@ -163,22 +182,21 @@ export default function Credits() {
   /* ========== ACTIONS ========== */
   const handleTopUp = (data) => {
     const { projectId, amount, service, note } = data;
+    const amt = num(amount);
 
-    // Update project balance
     setProjects((prev) =>
       prev.map((p) =>
         p.projectId === projectId
-          ? { ...p, balance: p.balance + amount, limit: p.limit + amount }
+          ? { ...p, balance: num(p.balance) + amt, limit: num(p.limit) + amt }
           : p
       )
     );
 
-    // Log transaction
     const newT = {
       id: 'TXN-' + String(Date.now()).slice(-4),
       projectId,
       type: 'topup',
-      amount,
+      amount: amt,
       service: service || 'Credit Purchase',
       date: new Date().toISOString().slice(0, 10),
       note: note || '',
@@ -186,20 +204,17 @@ export default function Credits() {
     setTransactions((prev) => [newT, ...prev]);
 
     setShowTopUpModal(false);
-    showToast(
-      `Added ${amount.toLocaleString()} credits to ${projectName(projectId)}`
-    );
+    showToast(`Added ${fmt(amt)} credits to ${projectName(projectId)}`);
   };
 
   const handleAllocate = (data) => {
     const { projectId, amount, service } = data;
+    const amt = num(amount);
 
-    // Move credits from main pool — here we simulate by reducing a placeholder
-    // In a real app you'd have a "central wallet" object
     setProjects((prev) =>
       prev.map((p) =>
         p.projectId === projectId
-          ? { ...p, balance: p.balance + amount, limit: p.limit + amount }
+          ? { ...p, balance: num(p.balance) + amt, limit: num(p.limit) + amt }
           : p
       )
     );
@@ -208,7 +223,7 @@ export default function Credits() {
       id: 'TXN-' + String(Date.now()).slice(-4),
       projectId,
       type: 'topup',
-      amount,
+      amount: amt,
       service: service || 'Allocation',
       date: new Date().toISOString().slice(0, 10),
       note: `Allocated from central wallet`,
@@ -216,7 +231,7 @@ export default function Credits() {
     setTransactions((prev) => [newT, ...prev]);
 
     setShowAllocateModal(false);
-    showToast(`Allocated ${amount.toLocaleString()} credits`);
+    showToast(`Allocated ${fmt(amt)} credits`);
   };
 
   const handleDeleteTransaction = (id) => {
@@ -307,10 +322,10 @@ export default function Credits() {
                 Total Platform Balance
               </p>
               <p className="font-display text-4xl font-bold tabular-nums text-brand-ink">
-                {summary.totalBalance.toLocaleString()}
+                {fmt(summary.totalBalance)}
               </p>
               <p className="mt-1 text-xs text-brand-ink/50">
-                of {summary.totalLimit.toLocaleString()} credits ·{' '}
+                of {fmt(summary.totalLimit)} credits ·{' '}
                 {summary.usageRate}% used
               </p>
             </div>
@@ -319,13 +334,13 @@ export default function Credits() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <StatChip
               label="Total Used"
-              value={summary.totalUsed.toLocaleString()}
+              value={fmt(summary.totalUsed)}
               icon={TrendingDown}
               color="rose"
             />
             <StatChip
               label="Total Top-Ups"
-              value={`+${summary.totalTopUps.toLocaleString()}`}
+              value={`+${fmt(summary.totalTopUps)}`}
               icon={TrendingUp}
               color="emerald"
             />
@@ -498,13 +513,38 @@ function StatChip({ label, value, icon: Icon, color }) {
 
 /* ================= OVERVIEW TAB ================= */
 function OverviewTab({ scopedProjects, projectName, onTopUp }) {
+  /* ✅ FIX: handle empty state gracefully */
+  if (!scopedProjects || scopedProjects.length === 0) {
+    return (
+      <div className="card flex flex-col items-center justify-center gap-3 py-16 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-lilac text-brand-purple">
+          <Wallet size={22} />
+        </div>
+        <p className="font-display text-base font-semibold text-brand-ink">
+          No project credits yet
+        </p>
+        <p className="max-w-sm text-sm text-brand-ink/50">
+          Add credits to a project to start tracking usage.
+        </p>
+        <button
+          onClick={onTopUp}
+          className="mt-2 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-purple to-brand-magenta px-4 py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110"
+        >
+          <Plus size={16} /> Add Credits
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {/* Project allocation cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {scopedProjects.map((c) => {
-          const pct = Math.min(100, Math.round((c.balance / c.limit) * 100));
-          const isLow = c.balance < LOW_BALANCE_THRESHOLD;
+          const balance = num(c.balance);
+          const limit = num(c.limit) || 1; // ✅ avoid div by zero
+          const used = num(c.used);
+          const pct = Math.min(100, Math.round((balance / limit) * 100));
+          const isLow = balance < LOW_BALANCE_THRESHOLD;
           return (
             <div
               key={c.projectId}
@@ -536,8 +576,9 @@ function OverviewTab({ scopedProjects, projectName, onTopUp }) {
                   <p className="truncate font-semibold text-brand-ink">
                     {projectName(c.projectId)}
                   </p>
+                  {/* ✅ FIX: use fmt() instead of raw .toLocaleString() */}
                   <p className="truncate text-xs text-brand-ink/50">
-                    {c.used.toLocaleString()} credits used
+                    {fmt(used)} credits used
                   </p>
                 </div>
                 {isLow && (
@@ -552,10 +593,10 @@ function OverviewTab({ scopedProjects, projectName, onTopUp }) {
                   isLow ? 'text-rose-600' : 'text-brand-purple'
                 }`}
               >
-                {c.balance.toLocaleString()}
+                {fmt(balance)}
               </p>
               <p className="text-xs text-brand-ink/50">
-                of {c.limit.toLocaleString()} credits
+                of {fmt(limit)} credits
               </p>
 
               <div className="mt-3">
@@ -581,21 +622,20 @@ function OverviewTab({ scopedProjects, projectName, onTopUp }) {
                 </div>
               </div>
 
-              {/* Service usage mini breakdown */}
               <div className="mt-3 grid grid-cols-3 gap-1.5">
                 <MiniUsagePill
                   label="SMS"
-                  value={c.usage?.SMS || 0}
+                  value={num(c.usage?.SMS)}
                   color="purple"
                 />
                 <MiniUsagePill
                   label="WA"
-                  value={c.usage?.WhatsApp || 0}
+                  value={num(c.usage?.WhatsApp)}
                   color="emerald"
                 />
                 <MiniUsagePill
                   label="Calls"
-                  value={c.usage?.['Voice Calls'] || 0}
+                  value={num(c.usage?.['Voice Calls'])}
                   color="amber"
                 />
               </div>
@@ -644,7 +684,7 @@ function UsageTab({ usageByService, totalServiceUsage, scopedProjects, projectNa
         </h3>
         <div className="space-y-3">
           {SERVICES.map((s) => {
-            const count = usageByService[s.key] || 0;
+            const count = num(usageByService[s.key]);
             const pct = (count / maxUsage) * 100;
             const overallPct =
               totalServiceUsage > 0
@@ -659,7 +699,7 @@ function UsageTab({ usageByService, totalServiceUsage, scopedProjects, projectNa
                     {s.label}
                   </span>
                   <span className="flex items-center gap-2 font-bold tabular-nums text-brand-ink">
-                    {count.toLocaleString()}
+                    {fmt(count)}
                     <span className="text-brand-ink/40">({overallPct}%)</span>
                   </span>
                 </div>
@@ -692,10 +732,9 @@ function UsageTab({ usageByService, totalServiceUsage, scopedProjects, projectNa
           </h3>
           <div className="space-y-3">
             {scopedProjects.map((p) => {
-              const pct = Math.min(
-                100,
-                Math.round((p.used / p.limit) * 100)
-              );
+              const used = num(p.used);
+              const limit = num(p.limit) || 1;
+              const pct = Math.min(100, Math.round((used / limit) * 100));
               return (
                 <div key={p.projectId}>
                   <div className="mb-1 flex items-center justify-between text-[10px]">
@@ -703,7 +742,7 @@ function UsageTab({ usageByService, totalServiceUsage, scopedProjects, projectNa
                       {projectName(p.projectId)}
                     </span>
                     <span className="font-bold tabular-nums text-brand-ink">
-                      {p.used.toLocaleString()} / {p.limit.toLocaleString()}
+                      {fmt(used)} / {fmt(limit)}
                     </span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-brand-lilac">
@@ -719,11 +758,11 @@ function UsageTab({ usageByService, totalServiceUsage, scopedProjects, projectNa
                     />
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-3 text-[10px] text-brand-ink/50">
-                    <span>SMS: {p.usage?.SMS || 0}</span>
-                    <span>WhatsApp: {p.usage?.WhatsApp || 0}</span>
-                    <span>Calls: {p.usage?.['Voice Calls'] || 0}</span>
-                    <span>IVR: {p.usage?.IVR || 0}</span>
-                    <span>Email: {p.usage?.Email || 0}</span>
+                    <span>SMS: {num(p.usage?.SMS)}</span>
+                    <span>WhatsApp: {num(p.usage?.WhatsApp)}</span>
+                    <span>Calls: {num(p.usage?.['Voice Calls'])}</span>
+                    <span>IVR: {num(p.usage?.IVR)}</span>
+                    <span>Email: {num(p.usage?.Email)}</span>
                   </div>
                 </div>
               );
@@ -732,7 +771,7 @@ function UsageTab({ usageByService, totalServiceUsage, scopedProjects, projectNa
         </div>
       )}
 
-      {/* Usage Examples diagram (from doc) */}
+      {/* Usage diagram */}
       <div className="card !p-4 space-y-3">
         <h3 className="flex items-center gap-2 font-display text-sm font-semibold text-brand-ink">
           <Coins size={14} className="text-brand-purple" />
@@ -795,7 +834,6 @@ function TransactionsTab({
 }) {
   return (
     <div className="space-y-4">
-      {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[220px] flex-1">
           <Search
@@ -883,7 +921,6 @@ function TransactionsTab({
         )}
       </div>
 
-      {/* Transactions list */}
       {transactions.length === 0 ? (
         <div className="card flex flex-col items-center justify-center gap-3 py-16 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-lilac text-brand-purple">
@@ -920,7 +957,7 @@ function TransactionsTab({
 
 /* ================= TRANSACTION ROW ================= */
 function TransactionRow({ transaction: t, projectName, onView, onDelete }) {
-  const isTopUp = t.type === 'topup' || t.amount > 0;
+  const isTopUp = t.type === 'topup' || num(t.amount) > 0;
   return (
     <div className="group flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border-2 border-brand-lilac/70 bg-white px-3 py-3 transition-all hover:shadow-md sm:flex-nowrap sm:gap-4 sm:px-4">
       <span
@@ -967,7 +1004,7 @@ function TransactionRow({ transaction: t, projectName, onView, onDelete }) {
         }`}
       >
         {isTopUp ? '+' : ''}
-        {t.amount.toLocaleString()}
+        {fmt(t.amount)}
       </span>
 
       <span className="hidden shrink-0 text-[10px] text-brand-ink/40 lg:block">
@@ -1004,7 +1041,7 @@ function AlertsTab({ lowBalanceProjects, projectName, onTopUp }) {
           All projects have healthy balances
         </p>
         <p className="max-w-sm text-sm text-brand-ink/50">
-          No projects are below the {LOW_BALANCE_THRESHOLD.toLocaleString()}{' '}
+          No projects are below the {fmt(LOW_BALANCE_THRESHOLD)}{' '}
           credit threshold.
         </p>
       </div>
@@ -1019,14 +1056,16 @@ function AlertsTab({ lowBalanceProjects, projectName, onTopUp }) {
           <p className="text-xs font-semibold text-rose-700">
             {lowBalanceProjects.length} project
             {lowBalanceProjects.length !== 1 ? 's' : ''} below the{' '}
-            {LOW_BALANCE_THRESHOLD.toLocaleString()} credit threshold.
+            {fmt(LOW_BALANCE_THRESHOLD)} credit threshold.
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {lowBalanceProjects.map((p) => {
-          const pct = Math.min(100, Math.round((p.balance / p.limit) * 100));
+          const balance = num(p.balance);
+          const limit = num(p.limit) || 1;
+          const pct = Math.min(100, Math.round((balance / limit) * 100));
           return (
             <div
               key={p.projectId}
@@ -1049,10 +1088,10 @@ function AlertsTab({ lowBalanceProjects, projectName, onTopUp }) {
               </div>
 
               <p className="mt-4 font-display text-3xl font-bold tabular-nums text-rose-600">
-                {p.balance.toLocaleString()}
+                {fmt(balance)}
               </p>
               <p className="text-xs text-brand-ink/50">
-                of {p.limit.toLocaleString()} credits
+                of {fmt(limit)} credits
               </p>
 
               <div className="mt-3">
@@ -1189,7 +1228,7 @@ function TopUpModal({ projects, onClose, onSubmit }) {
                 <option key={p.projectId} value={p.projectId}>
                   {PROJECTS.find((x) => x.id === p.projectId)?.name ||
                     p.projectId}{' '}
-                  (Balance: {p.balance.toLocaleString()})
+                  (Balance: {fmt(p.balance)})
                 </option>
               ))}
             </select>
@@ -1211,7 +1250,7 @@ function TopUpModal({ projects, onClose, onSubmit }) {
                       : 'border-brand-lilac bg-white text-brand-ink/60 hover:bg-brand-lilac/30'
                   }`}
                 >
-                  {a.toLocaleString()}
+                  {fmt(a)}
                 </button>
               ))}
             </div>
@@ -1284,7 +1323,7 @@ function TopUpModal({ projects, onClose, onSubmit }) {
                 'Adding…'
               ) : (
                 <span className="inline-flex items-center gap-1.5">
-                  <Coins size={14} /> Add {form.amount.toLocaleString()}
+                  <Coins size={14} /> Add {fmt(form.amount)}
                 </span>
               )}
             </button>
@@ -1424,7 +1463,7 @@ function AllocateModal({ projects, onClose, onSubmit }) {
 
 /* ================= TRANSACTION DRAWER ================= */
 function TransactionDrawer({ transaction: t, projectName, onClose }) {
-  const isTopUp = t.type === 'topup' || t.amount > 0;
+  const isTopUp = t.type === 'topup' || num(t.amount) > 0;
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
       <div className="h-full w-full max-w-lg overflow-y-auto bg-white shadow-panel">
@@ -1475,7 +1514,7 @@ function TransactionDrawer({ transaction: t, projectName, onClose }) {
               }`}
             >
               {isTopUp ? '+' : ''}
-              {t.amount.toLocaleString()}
+              {fmt(t.amount)}
             </p>
             <p className="mt-1 text-xs text-brand-ink/50">credits</p>
           </div>
