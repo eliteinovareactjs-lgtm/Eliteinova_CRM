@@ -5,9 +5,8 @@ import {
   MoreVertical, Eye, EyeOff, Copy, Check, Trash2, Pencil, Save,
   AlertCircle, Settings, Wifi, WifiOff, DollarSign, MessageSquare,
   MessageCircle, Mail, Phone, Globe, Link2, Lock, RefreshCw,
-  Info, Clock, Zap, Download, Layers, ListFilter, Building2, Hash,
-  Webhook, Shield, Signal, CreditCard, Send, Activity, Target,
-  UserCog, Grid3x3, List, ChevronRight, Filter, Plug2,
+  Clock, Zap, Download, Layers, Hash, Webhook, CreditCard,
+  Grid3x3, List, Filter,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { INTEGRATIONS as INITIAL_INTEGRATIONS } from '../../data/mockData';
@@ -97,9 +96,6 @@ const saveState = (key, value) => {
   } catch { /* ignore */ }
 };
 
-const initials = (name) =>
-  (name || '?').split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
-
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════ */
@@ -114,8 +110,7 @@ export default function Integrations() {
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
 
-  /* ✅ Single source of truth for which KPI card is active.
-        Prevents the "two cards active at once" bug. */
+  /* ✅ Single source of truth for which KPI card is active */
   const [activeKpi, setActiveKpi] = useState('total');
 
   const [integrations, setIntegrations] = useState(() =>
@@ -143,7 +138,6 @@ export default function Integrations() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmDeleteWebhook, setConfirmDeleteWebhook] = useState(null);
 
-  /* Reload on website change */
   useEffect(() => {
     setIntegrations(
       loadState(
@@ -209,10 +203,11 @@ export default function Integrations() {
     return { total, connected, disconnected, activeWebhooks, categories };
   }, [integrations, webhooks]);
 
-  /* ── KPI click handler — resets other filters ── */
+  /* ✅ KPI click — single handler, resets conflicting state */
   const handleKpiClick = (kpiKey) => {
     setActiveKpi(kpiKey);
     setSearchQuery('');
+    setStatusOpen(false);
 
     switch (kpiKey) {
       case 'total':
@@ -232,27 +227,35 @@ export default function Integrations() {
         setStatusFilter('All');
         break;
       case 'categories':
-        setTab('Telephony');
-        setStatusFilter('All');
+        /* ✅ FIX: navigate to the first category that actually has data,
+           falling back to Telephony if none do. */
+        {
+          const firstNonEmpty = Object.keys(PROVIDER_CATALOG).find(
+            (cat) => integrations.some((i) => i.category === cat)
+          );
+          setTab(firstNonEmpty || 'Telephony');
+          setStatusFilter('All');
+        }
         break;
       default:
         break;
     }
   };
 
-  /* ── Tab click also resets activeKpi if user navigates away ── */
+  /* ✅ Tab click — resets status filter when switching to a category tab */
   const handleTabClick = (key) => {
     setTab(key);
     setSearchQuery('');
+    setStatusOpen(false);
 
-    /* Sync activeKpi so only one card highlights */
     if (key === 'Webhooks') {
       setActiveKpi('webhooks');
       setStatusFilter('All');
     } else if (key === 'all') {
-      if (statusFilter === 'Connected') setActiveKpi('connected');
-      else if (statusFilter === 'Disconnected') setActiveKpi('disconnected');
-      else setActiveKpi('total');
+      /* ✅ FIX: reset status filter when going back to "All" so the list
+         actually shows everything the "All" tab implies. */
+      setStatusFilter('All');
+      setActiveKpi('total');
     } else {
       setActiveKpi('categories');
       setStatusFilter('All');
@@ -643,8 +646,10 @@ export default function Integrations() {
             onAdd={() => setShowAddModal(true)}
             hasFilters={!!searchQuery || statusFilter !== 'All'}
             onClear={() => {
+              /* ✅ FIX: also reset tab so empty state is fully cleared */
               setSearchQuery('');
               setStatusFilter('All');
+              setTab('all');
               setActiveKpi('total');
             }}
           />
@@ -684,6 +689,8 @@ export default function Integrations() {
                   onDisconnect={() => handleDisconnect(i.id)}
                   onSync={() => handleSync(i.id)}
                   onDelete={() => { setConfirmDelete(i); setMenuOpenId(null); }}
+                  onCopy={handleCopy}
+                  copiedId={copiedId}
                 />
               ))}
             </ul>
@@ -1001,6 +1008,7 @@ function IntegrationCard({
 function IntegrationRow({
   integration, categoryIcon, menuOpenId, setMenuOpenId,
   onView, onConfigure, onConnect, onDisconnect, onSync, onDelete,
+  onCopy, copiedId,
 }) {
   const Icon = categoryIcon(integration.category);
   const isConnected = integration.status === 'Connected';
@@ -1066,6 +1074,14 @@ function IntegrationRow({
             <CheckCircle2 size={12} /> Connect
           </button>
         )}
+        {/* ✅ Copy button now available in list view too */}
+        <button
+          onClick={() => onCopy(integration.id, integration.apiKey)}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-brand-ink/50 hover:bg-brand-lilac hover:text-brand-magenta"
+          title="Copy API Key"
+        >
+          {copiedId === integration.id ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+        </button>
         <div className="relative">
           <button
             onClick={() => setMenuOpenId(menuOpenId === integration.id ? null : integration.id)}
@@ -1113,7 +1129,6 @@ function IntegrationDetailDrawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm">
       <div className="h-full w-full max-w-2xl overflow-y-auto bg-white shadow-panel animate-slide-in-right">
-        {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-brand-lilac bg-gradient-to-r from-brand-mist/60 to-white px-6 py-4 backdrop-blur-sm">
           <div className="flex items-center gap-3">
             <span className={`flex h-9 w-9 items-center justify-center rounded-xl text-white ${
@@ -1134,7 +1149,6 @@ function IntegrationDetailDrawer({
         </div>
 
         <div className="space-y-5 p-6">
-          {/* Profile card */}
           <div className="relative overflow-hidden rounded-2xl border border-brand-lilac bg-gradient-to-br from-brand-mist/40 to-white p-5">
             <span className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-brand-magenta/10 blur-3xl" />
 
@@ -1208,7 +1222,6 @@ function IntegrationDetailDrawer({
             </div>
           </div>
 
-          {/* Capabilities */}
           {features.length > 0 && (
             <div className="card !p-4">
               <div className="mb-3 flex items-center gap-2">
@@ -1234,7 +1247,6 @@ function IntegrationDetailDrawer({
             </div>
           )}
 
-          {/* Credentials */}
           <div className="card !p-4">
             <div className="mb-3 flex items-center gap-2">
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50 text-brand-purple">
@@ -1250,7 +1262,6 @@ function IntegrationDetailDrawer({
               <CredentialField
                 label="API Key"
                 value={integration.apiKey || 'Not set'}
-                copyId={integration.id}
                 onCopy={() => onCopy(integration.id, integration.apiKey)}
                 copied={copiedId === integration.id}
                 mono
@@ -1263,7 +1274,6 @@ function IntegrationDetailDrawer({
               <CredentialField
                 label="Endpoint URL"
                 value={integration.endpoint || 'Not configured'}
-                copyId={`${integration.id}-ep`}
                 onCopy={() => onCopy(`${integration.id}-ep`, integration.endpoint)}
                 copied={copiedId === `${integration.id}-ep`}
                 mono
@@ -1271,7 +1281,6 @@ function IntegrationDetailDrawer({
             </div>
           </div>
 
-          {/* Webhooks summary */}
           {integration.category === 'Website' && (
             <div className="card !p-4">
               <div className="mb-3 flex items-center gap-2">
@@ -1305,7 +1314,6 @@ function IntegrationDetailDrawer({
             </div>
           )}
 
-          {/* Summary */}
           <div className="rounded-2xl border border-brand-lilac bg-gradient-to-br from-brand-mist/60 to-white p-4">
             <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink/50">Summary</p>
             <p className="mt-1.5 text-sm text-brand-ink/80">
@@ -1320,7 +1328,7 @@ function IntegrationDetailDrawer({
   );
 }
 
-function CredentialField({ label, value, mono, onCopy, copied, copyId }) {
+function CredentialField({ label, value, mono, onCopy, copied }) {
   return (
     <div>
       <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-brand-ink/50">{label}</p>

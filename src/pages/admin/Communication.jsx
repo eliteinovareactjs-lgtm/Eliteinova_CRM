@@ -3,11 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MessageSquare, Mail, Send, CheckCircle2, XCircle, Clock, X, Search,
   Filter, ChevronDown, Eye, Pencil, Trash2, Phone, Copy,
-  Download, FileText, Plus, AlertCircle, MessageCircle, ListFilter,
-  Calendar, Check, Bell, Settings, TrendingUp,
+  Download, FileText, Plus, AlertCircle, MessageCircle,
+  Calendar, Check, Bell, Settings,
   Sparkles, UserCheck, PhoneMissed, Megaphone, CreditCard, ClipboardList,
   CalendarClock, Repeat, Grid3x3, List,
-  AtSign,
+  AtSign, Layers,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -45,7 +45,7 @@ const TABS = [
   { key: 'sms',           label: 'SMS',           icon: MessageSquare },
   { key: 'whatsapp',      label: 'WhatsApp',      icon: MessageCircle },
   { key: 'email',         label: 'Email',         icon: Mail },
-  { key: 'logs',          label: 'Message Logs',  icon: ListFilter },
+  { key: 'logs',          label: 'Message Logs',  icon: List },
   { key: 'notifications', label: 'Notifications', icon: Bell },
 ];
 
@@ -214,6 +214,9 @@ export default function Communication() {
   const [copiedId, setCopiedId] = useState(null);
   const [toast, setToast] = useState(null);
 
+  /* ✅ Single source of truth for KPI active state — prevents double-highlight */
+  const [activeKpi, setActiveKpi] = useState('messages');
+
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2400);
@@ -260,7 +263,8 @@ export default function Communication() {
       const q = searchQuery.toLowerCase();
       rows = rows.filter((m) => `${m.to} ${m.message} ${m.channel}`.toLowerCase().includes(q));
     }
-    return rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    /* ✅ Sort by id (newest first) — more reliable than alphabetical date string */
+    return rows.sort((a, b) => String(b.id).localeCompare(String(a.id)));
   }, [messages, statusFilter, searchQuery]);
 
   const summary = useMemo(() => {
@@ -277,10 +281,63 @@ export default function Communication() {
     return { total, sms, whatsapp, email, sent, delivered, read, failed, pending, deliveryRate };
   }, [messages]);
 
+  /* ✅ KPI click handlers — mutually exclusive active state */
+  const handleMessagesKpiClick = () => {
+    setActiveKpi('messages');
+    setTab('sms');
+    setSearchQuery('');
+    setStatusFilter('All');
+    setCategoryFilter('All');
+  };
+
+  const handleDeliveredKpiClick = () => {
+    setActiveKpi('delivered');
+    setTab('logs');
+    setSearchQuery('');
+    setStatusFilter('Delivered');
+    setCategoryFilter('All');
+  };
+
+  const handlePendingKpiClick = () => {
+    setActiveKpi('pending');
+    setTab('logs');
+    setSearchQuery('');
+    setStatusFilter('Pending');
+    setCategoryFilter('All');
+  };
+
+  const handleFailedKpiClick = () => {
+    setActiveKpi('failed');
+    setTab('logs');
+    setSearchQuery('');
+    setStatusFilter('Failed');
+    setCategoryFilter('All');
+  };
+
+  const handleNotificationsKpiClick = () => {
+    setActiveKpi('notifications');
+    setTab('notifications');
+    setSearchQuery('');
+    setStatusFilter('All');
+    setCategoryFilter('All');
+  };
+
+  /* ✅ Sync activeKpi when user clicks a tab */
+  const handleTabClick = (key) => {
+    setTab(key);
+    setSearchQuery('');
+    setStatusFilter('All');
+    setCategoryFilter('All');
+
+    if (key === 'notifications') setActiveKpi('notifications');
+    else if (key === 'logs') setActiveKpi('messages');
+    else setActiveKpi('messages');
+  };
+
   const handleSaveTemplate = (data) => {
     const today = new Date().toISOString().slice(0, 10);
 
-    if (editingTemplate) {
+    if (editingTemplate && !editingTemplate.__prefill) {
       const channelChanged = data.channel !== editingTemplate.channel;
       setTemplates((prev) =>
         prev.map((t) =>
@@ -373,6 +430,7 @@ export default function Communication() {
       ...prev,
       [key]: { ...prev[key], channel },
     }));
+    showToast(`Delivery channel updated to ${channel}`);
   };
 
   const handleExport = () => {
@@ -422,7 +480,6 @@ export default function Communication() {
 
   const isTemplateMode = editingTemplate && !editingTemplate.__prefill;
 
-  /* Tab counts for the tabs bar */
   const tabCounts = useMemo(() => ({
     sms: templates.filter((t) => t.channel === 'SMS').length,
     whatsapp: templates.filter((t) => t.channel === 'WhatsApp').length,
@@ -466,7 +523,7 @@ export default function Communication() {
           </div>
         </div>
 
-        {/* ═══ KPI STRIP — 5-COLUMN GRID, 4 CARDS (5th slot left empty) ═══ */}
+        {/* ═══ KPI STRIP — 5 COLUMNS ═══ */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -478,7 +535,6 @@ export default function Communication() {
             </div>
           </div>
 
-          {/* ✅ FIXED: 5-column grid on large screens — cards match sibling pages' size */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             <KpiCard
               icon={Send}
@@ -486,8 +542,8 @@ export default function Communication() {
               value={summary.total}
               sub={`${summary.sms} SMS · ${summary.whatsapp} WA`}
               color="purple"
-              active={tab === 'sms' || tab === 'whatsapp' || tab === 'email'}
-              onClick={() => setTab('sms')}
+              active={activeKpi === 'messages'}
+              onClick={handleMessagesKpiClick}
               delay={0}
             />
             <KpiCard
@@ -496,6 +552,8 @@ export default function Communication() {
               value={summary.delivered + summary.read + summary.sent}
               sub={`${summary.deliveryRate}% delivery rate`}
               color="emerald"
+              active={activeKpi === 'delivered'}
+              onClick={handleDeliveredKpiClick}
               delay={40}
             />
             <KpiCard
@@ -504,6 +562,8 @@ export default function Communication() {
               value={summary.pending}
               sub="Awaiting delivery"
               color="amber"
+              active={activeKpi === 'pending'}
+              onClick={handlePendingKpiClick}
               delay={80}
             />
             <KpiCard
@@ -512,18 +572,30 @@ export default function Communication() {
               value={summary.failed}
               sub="Require attention"
               color="rose"
+              active={activeKpi === 'failed'}
+              onClick={handleFailedKpiClick}
               delay={120}
             />
-            {/* 5th slot intentionally left empty */}
+            <KpiCard
+              icon={Bell}
+              label="Notifications"
+              value={notifications.length}
+              sub={`${unreadCount} unread`}
+              color="purple"
+              active={activeKpi === 'notifications'}
+              onClick={handleNotificationsKpiClick}
+              delay={160}
+            />
           </div>
         </div>
 
-        {/* ═══ SECONDARY STRIP ═══ */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {/* ═══ SECONDARY STRIP — matches 5-col layout ═══ */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           <MiniStat icon={MessageSquare}  label="SMS"       value={summary.sms}        color="purple" />
           <MiniStat icon={MessageCircle}  label="WhatsApp"  value={summary.whatsapp}   color="emerald" />
           <MiniStat icon={Mail}           label="Email"     value={summary.email}      color="amber" />
           <MiniStat icon={FileText}       label="Templates" value={templates.length}   color="rose" />
+          <MiniStat icon={List}           label="Logs"      value={messages.length}    color="purple" />
         </div>
 
         {/* ═══ TABS ═══ */}
@@ -537,12 +609,7 @@ export default function Communication() {
               return (
                 <button
                   key={key}
-                  onClick={() => {
-                    setTab(key);
-                    setSearchQuery('');
-                    setStatusFilter('All');
-                    setCategoryFilter('All');
-                  }}
+                  onClick={() => handleTabClick(key)}
                   className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all ${
                     active
                       ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)] scale-[1.02]'
@@ -603,7 +670,15 @@ export default function Communication() {
                 options={['All', ...STATUSES]}
                 open={statusOpen}
                 onToggle={() => { setStatusOpen((s) => !s); setCategoryOpen(false); }}
-                onChange={(v) => { setStatusFilter(v); setStatusOpen(false); }}
+                onChange={(v) => {
+                  setStatusFilter(v);
+                  setStatusOpen(false);
+                  /* ✅ Sync activeKpi when status filter changes via dropdown */
+                  if (v === 'Delivered' || v === 'Read' || v === 'Sent') setActiveKpi('delivered');
+                  else if (v === 'Pending') setActiveKpi('pending');
+                  else if (v === 'Failed') setActiveKpi('failed');
+                  else setActiveKpi('messages');
+                }}
               />
             )}
 
@@ -642,7 +717,7 @@ export default function Communication() {
           </div>
         )}
 
-        {/* ═══ CATEGORY CHIPS (templates only) ═══ */}
+        {/* ═══ CATEGORY CHIPS ═══ */}
         {['sms', 'whatsapp', 'email'].includes(tab) && (
           <div className="card !p-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -908,7 +983,7 @@ function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onC
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   TEMPLATES TAB — grid + list views
+   TEMPLATES TAB
    ═══════════════════════════════════════════════════════════════ */
 function TemplatesTab({ templates, channel, viewMode, onCreate, onEdit, onDelete, onUse, onCopy, copiedId, onView }) {
   return (
@@ -970,7 +1045,6 @@ function TemplatesTab({ templates, channel, viewMode, onCreate, onEdit, onDelete
   );
 }
 
-/* ── Template Card (GRID) ── */
 function TemplateCard({ template: t, onView, onEdit, onDelete, onUse, onCopy, copiedId }) {
   const cat = findCategory(t.category);
   const CatIcon = cat.icon;
@@ -1061,7 +1135,6 @@ function TemplateCard({ template: t, onView, onEdit, onDelete, onUse, onCopy, co
   );
 }
 
-/* ── Template Row (LIST) ── */
 function TemplateRow({ template: t, onView, onEdit, onDelete, onUse, onCopy, copiedId }) {
   const cat = findCategory(t.category);
   const CatIcon = cat.icon;
@@ -1153,7 +1226,7 @@ function LogsTab({ messages, viewMode, onView, onCopy, copiedId }) {
   if (messages.length === 0) {
     return (
       <EmptyState
-        icon={ListFilter}
+        icon={List}
         title="No messages found"
         subtitle="Try adjusting your filters or send a new message."
       />

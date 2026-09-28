@@ -1,16 +1,15 @@
 // src/pages/admin/Reports.jsx
 import { useMemo, useState } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, PieChart, Pie, Cell, Legend, AreaChart, Area,
-  RadialBarChart, RadialBar, ComposedChart,
+  Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, PieChart, Pie, Cell, Legend, Area, ComposedChart,
 } from 'recharts';
 import {
-  Download, TrendingUp, TrendingDown, Phone, Users, Target, Clock,
-  CheckCircle2, AlertTriangle, Filter, ChevronDown, Award, Play,
+  Download, TrendingUp, TrendingDown, Phone, Users, Target,
+  CheckCircle2, AlertTriangle, ChevronDown, Award,
   BarChart3, Calendar, ArrowRight, PhoneIncoming, PhoneOutgoing,
   PhoneMissed, XCircle, Megaphone, UserCheck, ListChecks, Layers,
-  Zap, Percent, Sparkles, FileText,
+  Percent, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -24,10 +23,10 @@ const COLORS = ['#E31C79', '#8B2FD6', '#F59E0B', '#10B981', '#6366F1', '#EC4899'
    ═══════════════════════════════════════════════════════════════ */
 const RANGES = ['Today', 'Last 7 Days', 'Last 30 Days', 'This Month', 'Custom'];
 
-// 👇 Change these to match the date field names in your mockData
 const LEAD_DATE_FIELDS = ['createdAt', 'created_at', 'date'];
 const CALL_DATE_FIELDS = ['startedAt', 'calledAt', 'createdAt', 'date', 'timestamp'];
 const FOLLOWUP_DATE_FIELDS = ['dueDate', 'scheduledAt', 'createdAt', 'date'];
+const CAMPAIGN_DATE_FIELDS = ['createdAt', 'startDate', 'created_at', 'date'];
 
 const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const endOfDay = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
@@ -97,6 +96,10 @@ export default function Reports() {
   const [range, setRange] = useState('Last 7 Days');
   const [rangeOpen, setRangeOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+
+  /* ✅ Single source of truth for KPI highlight (matches Integrations pattern) */
+  const [activeKpi, setActiveKpi] = useState('overview');
+
   const [customFrom, setCustomFrom] = useState(toInputValue(new Date(Date.now() - 6 * 864e5)));
   const [customTo, setCustomTo] = useState(toInputValue(new Date()));
 
@@ -135,9 +138,12 @@ export default function Reports() {
     [activeWebsiteId, bounds]
   );
 
+  /* ✅ FIX: Campaigns now filtered by date range too */
   const scopedCampaigns = useMemo(
-    () => (CAMPAIGNS || []).filter((c) => (c.projectId ?? c.websiteId) === activeWebsiteId),
-    [activeWebsiteId]
+    () => (CAMPAIGNS || []).filter(
+      (c) => (c.projectId ?? c.websiteId) === activeWebsiteId && inRange(c, CAMPAIGN_DATE_FIELDS, bounds)
+    ),
+    [activeWebsiteId, bounds]
   );
 
   /* ========== CORE METRICS ========== */
@@ -152,7 +158,6 @@ export default function Reports() {
     const assigned = scopedLeads.filter((l) => l.assignedAgent && l.assignedAgent !== 'Unassigned').length;
     const conversion = total > 0 ? Math.round((won / total) * 100) : 0;
     const compliance = total > 0 ? Math.round(((total - missed) / total) * 100) : 0;
-    const avgHandling = total > 0 ? (total * 2.5).toFixed(1) : '0.0';
 
     const connectedCalls = scopedCalls.filter((c) => c.status === 'connected').length;
     const missedCalls = scopedCalls.filter((c) => c.status === 'missed').length;
@@ -165,7 +170,7 @@ export default function Reports() {
 
     return {
       total, won, missed, followUp, fresh, qualified, lost, assigned,
-      conversion, compliance, avgHandling,
+      conversion, compliance,
       connectedCalls, missedCalls, inboundCalls, outboundCalls,
       totalCallDuration,
       avgCallDuration: scopedCalls.length ? Math.round(totalCallDuration / scopedCalls.length) : 0,
@@ -175,7 +180,10 @@ export default function Reports() {
   /* ========== TREND DATA (follows the selected range) ========== */
   const trendData = useMemo(() => {
     const { start, end } = bounds;
-    const hourly = range === 'Today';
+    /* ✅ FIX: hourly only when the range spans exactly 1 day AND range is 'Today' */
+    const spanDays = Math.ceil((end - start) / 864e5);
+    const hourly = range === 'Today' || (spanDays <= 1 && range === 'Custom');
+
     const rows = [];
     const index = new Map();
     const keyOf = (d) => (hourly ? d.getHours() : startOfDay(d).getTime());
@@ -214,7 +222,6 @@ export default function Reports() {
 
   /* ========== 1. LEAD REPORTS ========== */
 
-  /* Lead Source Report */
   const sourceData = useMemo(() => {
     const sources = {};
     scopedLeads.forEach((l) => {
@@ -226,7 +233,6 @@ export default function Reports() {
       .sort((a, b) => b.value - a.value);
   }, [scopedLeads]);
 
-  /* Lead Status Report */
   const statusData = useMemo(() => {
     const statuses = ['Fresh', 'Follow Up', 'Qualified', 'Won', 'Lost', 'Missed'];
     return statuses.map((s) => ({
@@ -243,7 +249,6 @@ export default function Reports() {
     }));
   }, [scopedLeads]);
 
-  /* Lead Category Report */
   const categoryData = useMemo(() => {
     const cats = {};
     scopedLeads.forEach((l) => {
@@ -255,7 +260,6 @@ export default function Reports() {
       .sort((a, b) => b.value - a.value);
   }, [scopedLeads]);
 
-  /* Lead Assignment Status */
   const assignmentData = useMemo(() => {
     const assigned = scopedLeads.filter((l) => l.assignedAgent && l.assignedAgent !== 'Unassigned').length;
     const unassigned = scopedLeads.length - assigned;
@@ -267,7 +271,6 @@ export default function Reports() {
 
   /* ========== 2. AGENT REPORTS ========== */
 
-  /* Agent-wise Leads/Calls/Follow-ups/Conversion */
   const agentPerformance = useMemo(() => {
     return scopedAgents.map((a) => {
       const agentLeads = scopedLeads.filter((l) => l.assignedAgent === a.name);
@@ -291,13 +294,11 @@ export default function Reports() {
     }).sort((a, b) => b.leads - a.leads);
   }, [scopedAgents, scopedLeads, scopedCalls, scopedFollowUps]);
 
-  /* Top 5 by conversion for chart */
   const topAgentsChart = useMemo(
     () => [...agentPerformance].sort((a, b) => b.rate - a.rate).slice(0, 5),
     [agentPerformance]
   );
 
-  /* Agent Productivity */
   const agentProductivity = useMemo(() => {
     return agentPerformance.map((a) => ({
       name: a.name.split(' ')[0],
@@ -309,13 +310,11 @@ export default function Reports() {
 
   /* ========== 3. CALL REPORTS ========== */
 
-  /* Call Type Distribution */
   const callTypeData = useMemo(() => [
     { name: 'Inbound', value: metrics.inboundCalls, fill: '#10B981' },
     { name: 'Outbound', value: metrics.outboundCalls, fill: '#8B2FD6' },
   ], [metrics]);
 
-  /* Call Status Distribution */
   const callStatusData = useMemo(() => {
     const statuses = ['connected', 'missed', 'failed', 'ringing'];
     const labels = { connected: 'Connected', missed: 'Missed', failed: 'Failed', ringing: 'Ringing' };
@@ -329,7 +328,6 @@ export default function Reports() {
       .filter((d) => d.value > 0);
   }, [scopedCalls]);
 
-  /* Call Duration buckets */
   const callDurationBuckets = useMemo(() => {
     const buckets = [
       { name: '<1m', min: 0, max: 60, value: 0, fill: '#94A3B8' },
@@ -347,7 +345,6 @@ export default function Reports() {
     return buckets;
   }, [scopedCalls]);
 
-  /* Call Disposition */
   const callDispositionData = useMemo(() => {
     const dispositions = {};
     scopedCalls.forEach((c) => {
@@ -377,7 +374,6 @@ export default function Reports() {
     }));
   }, [scopedFollowUps]);
 
-  /* Agent-wise Follow-ups */
   const followUpsByAgent = useMemo(() => {
     return agentPerformance
       .filter((a) => a.followUps > 0)
@@ -443,6 +439,29 @@ export default function Reports() {
     ];
   }, [scopedLeads, metrics]);
 
+  /* ✅ KPI click handler — single source of truth, resets other filters */
+  const handleKpiClick = (kpiKey) => {
+    setActiveKpi(kpiKey);
+    if (kpiKey === 'overview')      setActiveTab('overview');
+    else if (kpiKey === 'leads')    setActiveTab('leads');
+    else if (kpiKey === 'conversion') setActiveTab('conversion');
+    else if (kpiKey === 'calls')    setActiveTab('calls');
+    else if (kpiKey === 'followups') setActiveTab('followups');
+    else if (kpiKey === 'agents')   setActiveTab('agents');
+  };
+
+  /* ✅ Tab click syncs activeKpi */
+  const handleTabClick = (key) => {
+    setActiveTab(key);
+    if (key === 'overview')      setActiveKpi('overview');
+    else if (key === 'leads')    setActiveKpi('leads');
+    else if (key === 'conversion') setActiveKpi('conversion');
+    else if (key === 'calls')    setActiveKpi('calls');
+    else if (key === 'followups') setActiveKpi('followups');
+    else if (key === 'agents')   setActiveKpi('agents');
+    else setActiveKpi('overview');
+  };
+
   /* ========== EXPORT ========== */
   const handleExport = () => {
     const rows = [
@@ -467,6 +486,17 @@ export default function Reports() {
       ['Call Report', 'Avg Duration (sec)', metrics.avgCallDuration],
       ['Follow-up Report', 'Total', scopedFollowUps.length],
       ['Follow-up Report', 'Compliance %', metrics.compliance],
+      /* ✅ NEW: Include campaign metrics in export */
+      ...(campaignData ? [
+        ['Campaign Report', 'Total Campaigns', scopedCampaigns.length],
+        ['Campaign Report', 'Active', campaignData.active],
+        ['Campaign Report', 'Completed', campaignData.completed],
+        ['Campaign Report', 'Total Leads', campaignData.totalLeads],
+        ['Campaign Report', 'Total Calls', campaignData.totalCalls],
+        ['Campaign Report', 'Connected', campaignData.totalConnected],
+        ['Campaign Report', 'Interested', campaignData.totalInterested],
+        ['Campaign Report', 'Converted', campaignData.totalConverted],
+      ] : []),
     ];
     const csv = rows
       .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
@@ -511,7 +541,6 @@ export default function Reports() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Range picker */}
             <div className="relative">
               <button
                 onClick={() => setRangeOpen((s) => !s)}
@@ -543,7 +572,6 @@ export default function Reports() {
               )}
             </div>
 
-            {/* Custom date range inputs */}
             {range === 'Custom' && (
               <div className="flex items-center gap-1.5 rounded-full border border-brand-lilac bg-white px-3 py-1.5 text-xs shadow-sm">
                 <input
@@ -566,7 +594,7 @@ export default function Reports() {
 
             <button
               onClick={handleExport}
-              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-4 py-2 text-xs font-semibold text-white shadow-[0_6px_18px_-6px_rgba(227,28,121,0.6)] transition-all hover:-translate-y-0.5 hover:brightness-110"
+              className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-4 py-2 text-xs font-semibold text-brand-ink shadow-sm transition-all hover:border-brand-magenta/40 hover:shadow-md"
             >
               <Download size={14} /> Export CSV
             </button>
@@ -583,8 +611,8 @@ export default function Reports() {
               value={metrics.total}
               sub={`${metrics.fresh} fresh`}
               color="purple"
-              onClick={() => setActiveTab('leads')}
-              active={activeTab === 'leads'}
+              onClick={() => handleKpiClick('leads')}
+              active={activeKpi === 'leads'}
               delay={0}
             />
             <MiniKpiCard
@@ -593,8 +621,8 @@ export default function Reports() {
               value={`${metrics.conversion}%`}
               sub={`${metrics.won} won`}
               color="emerald"
-              onClick={() => setActiveTab('conversion')}
-              active={activeTab === 'conversion'}
+              onClick={() => handleKpiClick('conversion')}
+              active={activeKpi === 'conversion'}
               delay={40}
             />
             <MiniKpiCard
@@ -603,8 +631,8 @@ export default function Reports() {
               value={scopedCalls.length}
               sub={`${metrics.connectedCalls} connected`}
               color="rose"
-              onClick={() => setActiveTab('calls')}
-              active={activeTab === 'calls'}
+              onClick={() => handleKpiClick('calls')}
+              active={activeKpi === 'calls'}
               delay={80}
             />
             <MiniKpiCard
@@ -613,8 +641,8 @@ export default function Reports() {
               value={scopedFollowUps.length}
               sub={`${metrics.compliance}% compliance`}
               color="amber"
-              onClick={() => setActiveTab('followups')}
-              active={activeTab === 'followups'}
+              onClick={() => handleKpiClick('followups')}
+              active={activeKpi === 'followups'}
               delay={120}
             />
             <MiniKpiCard
@@ -623,8 +651,8 @@ export default function Reports() {
               value={scopedAgents.filter((a) => a.status === 'Active').length}
               sub={`${scopedAgents.length} total`}
               color="purple"
-              onClick={() => setActiveTab('agents')}
-              active={activeTab === 'agents'}
+              onClick={() => handleKpiClick('agents')}
+              active={activeKpi === 'agents'}
               delay={160}
             />
           </div>
@@ -638,7 +666,7 @@ export default function Reports() {
               return (
                 <button
                   key={key}
-                  onClick={() => setActiveTab(key)}
+                  onClick={() => handleTabClick(key)}
                   className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all ${
                     active
                       ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)] scale-[1.02]'
@@ -832,7 +860,6 @@ function OverviewTab({
 }) {
   return (
     <div className="space-y-5">
-      {/* Row 1: Lead Trend + Source */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <ChartCard
           title="Lead & Call Trend"
@@ -844,7 +871,7 @@ function OverviewTab({
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={trendData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="ov-calls-grad" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="reports-ov-calls-grad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#E31C79" stopOpacity={0.35} />
                     <stop offset="100%" stopColor="#E31C79" stopOpacity={0} />
                   </linearGradient>
@@ -853,7 +880,7 @@ function OverviewTab({
                 <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false} dy={6} interval="preserveStartEnd" minTickGap={16} />
                 <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                <Area type="monotone" dataKey="calls" stroke="#E31C79" strokeWidth={3} fill="url(#ov-calls-grad)" name="Calls" dot={{ r: 3, fill: '#E31C79' }} activeDot={{ r: 6 }} />
+                <Area type="monotone" dataKey="calls" stroke="#E31C79" strokeWidth={3} fill="url(#reports-ov-calls-grad)" name="Calls" dot={{ r: 3, fill: '#E31C79' }} activeDot={{ r: 6 }} />
                 <Line type="monotone" dataKey="leads" stroke="#8B2FD6" strokeWidth={2.5} dot={{ r: 3, fill: '#8B2FD6' }} activeDot={{ r: 6 }} name="Leads" />
               </ComposedChart>
             </ResponsiveContainer>
@@ -890,7 +917,6 @@ function OverviewTab({
         </ChartCard>
       </div>
 
-      {/* Row 2: Lead Status + Top Agents + Follow-ups */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <ChartCard title="Lead Status" subtitle="Pipeline snapshot" icon={Layers}>
           {metrics.total === 0 ? (
@@ -971,7 +997,6 @@ function OverviewTab({
         </ChartCard>
       </div>
 
-      {/* Row 3: Calls + Campaign Summary */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <ChartCard title="Call Analytics" subtitle={`${scopedCalls.length} total calls`} icon={Phone}>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1017,7 +1042,6 @@ function OverviewTab({
 function LeadReportsTab({ metrics, sourceData, statusData, categoryData, assignmentData, scopedLeads }) {
   return (
     <div className="space-y-5">
-      {/* KPI Row */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <KPITile icon={Layers}      label="Total"       value={metrics.total}     color="purple" />
         <KPITile icon={Sparkles}    label="New (Fresh)" value={metrics.fresh}     color="rose" />
@@ -1027,7 +1051,6 @@ function LeadReportsTab({ metrics, sourceData, statusData, categoryData, assignm
         <KPITile icon={XCircle}     label="Lost"        value={metrics.lost}      color="rose" />
       </div>
 
-      {/* Charts Row 1: Source + Status */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <ChartCard title="Lead Source Report" subtitle="Distribution by source" icon={Layers}>
           {sourceData.length === 0 ? (
@@ -1074,7 +1097,6 @@ function LeadReportsTab({ metrics, sourceData, statusData, categoryData, assignm
         </ChartCard>
       </div>
 
-      {/* Charts Row 2: Category + Assignment */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <ChartCard title="Lead Category Report" subtitle="By business category" icon={Layers}>
           {categoryData.length === 0 ? (
@@ -1145,7 +1167,6 @@ function LeadReportsTab({ metrics, sourceData, statusData, categoryData, assignm
 function AgentReportsTab({ agentPerformance, topAgentsChart, agentProductivity }) {
   return (
     <div className="space-y-5">
-      {/* Chart: Top agents conversion */}
       <ChartCard title="Agent Conversion Leaderboard" subtitle="Top 5 by conversion rate" icon={Award}>
         {topAgentsChart.length === 0 ? (
           <EmptyState message="No agents yet" />
@@ -1154,7 +1175,7 @@ function AgentReportsTab({ agentPerformance, topAgentsChart, agentProductivity }
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topAgentsChart} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="agent-grad" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="reports-agent-grad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#E31C79" />
                     <stop offset="100%" stopColor="#8B2FD6" />
                   </linearGradient>
@@ -1163,14 +1184,13 @@ function AgentReportsTab({ agentPerformance, topAgentsChart, agentProductivity }
                 <XAxis dataKey="name" tick={AXIS_TICK} axisLine={false} tickLine={false} />
                 <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} domain={[0, 100]} unit="%" />
                 <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v) => `${v}%`} cursor={{ fill: '#F1E4FB' }} />
-                <Bar dataKey="rate" fill="url(#agent-grad)" radius={[8, 8, 0, 0]} barSize={44} />
+                <Bar dataKey="rate" fill="url(#reports-agent-grad)" radius={[8, 8, 0, 0]} barSize={44} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         )}
       </ChartCard>
 
-      {/* Chart: Agent productivity */}
       <ChartCard title="Agent Productivity" subtitle="Leads, calls, and follow-ups" icon={BarChart3}>
         {agentProductivity.length === 0 ? (
           <EmptyState message="No agents yet" />
@@ -1192,7 +1212,6 @@ function AgentReportsTab({ agentPerformance, topAgentsChart, agentProductivity }
         )}
       </ChartCard>
 
-      {/* Table: Full agent scorecard */}
       <ChartCard title="Agent Scorecard" subtitle={`${agentPerformance.length} agents`} icon={UserCheck}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px] text-sm">
@@ -1277,17 +1296,15 @@ function AgentReportsTab({ agentPerformance, topAgentsChart, agentProductivity }
 function CallReportsTab({ metrics, callTypeData, callStatusData, callDurationBuckets, callDispositionData, scopedCalls }) {
   return (
     <div className="space-y-5">
-      {/* KPI Row */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <KPITile icon={Phone}          label="Total Calls"     value={scopedCalls.length}      color="purple" />
         <KPITile icon={PhoneIncoming}  label="Inbound"         value={metrics.inboundCalls}    color="emerald" />
         <KPITile icon={PhoneOutgoing}  label="Outbound"        value={metrics.outboundCalls}   color="purple" />
         <KPITile icon={CheckCircle2}   label="Connected"       value={metrics.connectedCalls}  color="emerald" />
         <KPITile icon={PhoneMissed}    label="Missed"          value={metrics.missedCalls}     color="rose" />
-        <KPITile icon={Clock}          label="Avg Duration"    value={`${metrics.avgCallDuration}s`} color="amber" />
+        <KPITile icon={Calendar}       label="Avg Duration"    value={`${metrics.avgCallDuration}s`} color="amber" />
       </div>
 
-      {/* Charts Row 1: Type + Status */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <ChartCard title="Inbound vs Outbound" subtitle="Call type distribution" icon={Phone}>
           {scopedCalls.length === 0 ? (
@@ -1339,9 +1356,8 @@ function CallReportsTab({ metrics, callTypeData, callStatusData, callDurationBuc
         </ChartCard>
       </div>
 
-      {/* Charts Row 2: Duration + Disposition */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <ChartCard title="Call Duration Distribution" subtitle="Duration buckets" icon={Clock}>
+        <ChartCard title="Call Duration Distribution" subtitle="Duration buckets" icon={Calendar}>
           {scopedCalls.length === 0 ? (
             <EmptyState message="No calls yet" />
           ) : (
@@ -1400,15 +1416,13 @@ function FollowUpReportsTab({ metrics, followUpData, followUpsByAgent, scopedFol
 
   return (
     <div className="space-y-5">
-      {/* KPI Row */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KPITile icon={Calendar}      label="Total Follow-ups" value={total}     color="purple" />
-        <KPITile icon={Clock}         label="Pending"          value={pending}   color="amber" />
+        <KPITile icon={Calendar}      label="Pending"          value={pending}   color="amber" />
         <KPITile icon={AlertTriangle} label="Overdue"          value={overdue}   color="rose" alert={overdue > 0} />
         <KPITile icon={CheckCircle2}  label="Completed"        value={completed} color="emerald" />
       </div>
 
-      {/* Charts */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <ChartCard title="Follow-up Status" subtitle="Current state distribution" icon={Calendar}>
           {total === 0 ? (
@@ -1477,7 +1491,6 @@ function FollowUpReportsTab({ metrics, followUpData, followUpsByAgent, scopedFol
         </ChartCard>
       </div>
 
-      {/* Agent-wise follow-ups */}
       <ChartCard title="Agent-wise Follow-ups" subtitle="Total vs completed per agent" icon={UserCheck}>
         {followUpsByAgent.length === 0 ? (
           <EmptyState message="No follow-up data per agent yet" />
@@ -1508,14 +1521,13 @@ function CampaignReportsTab({ campaignData, campaignFunnelData, scopedCampaigns 
   if (!campaignData || scopedCampaigns.length === 0) {
     return (
       <ChartCard title="Campaign Reports" subtitle="No campaigns configured" icon={Megaphone}>
-        <EmptyState message="No campaigns for this website yet. Create a campaign to see reports." />
+        <EmptyState message="No campaigns for this website in the selected date range. Create a campaign or widen the range." />
       </ChartCard>
     );
   }
 
   return (
     <div className="space-y-5">
-      {/* KPI Row */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <KPITile icon={Megaphone}  label="Active"      value={campaignData.active}         color="emerald" />
         <KPITile icon={CheckCircle2} label="Completed" value={campaignData.completed}      color="purple" />
@@ -1525,7 +1537,6 @@ function CampaignReportsTab({ campaignData, campaignFunnelData, scopedCampaigns 
         <KPITile icon={Target}     label="Converted"   value={campaignData.totalConverted} color="emerald" />
       </div>
 
-      {/* Funnel */}
       <ChartCard title="Campaign Funnel" subtitle="Leads → Conversions" icon={Target}>
         {campaignFunnelData.every((s) => s.value === 0) ? (
           <EmptyState message="No campaign activity yet" />
@@ -1548,7 +1559,6 @@ function CampaignReportsTab({ campaignData, campaignFunnelData, scopedCampaigns 
         )}
       </ChartCard>
 
-      {/* Campaign Table */}
       <ChartCard title="Campaign Performance" subtitle={`${scopedCampaigns.length} campaigns`} icon={Megaphone}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
@@ -1614,7 +1624,6 @@ function CampaignReportsTab({ campaignData, campaignFunnelData, scopedCampaigns 
 function ConversionReportsTab({ metrics, conversionJourney, statusData }) {
   return (
     <div className="space-y-5">
-      {/* KPI Row */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KPITile icon={Layers}       label="Total Leads"    value={metrics.total}          color="purple" />
         <KPITile icon={CheckCircle2} label="Converted"      value={metrics.won}            color="emerald" />
@@ -1622,60 +1631,56 @@ function ConversionReportsTab({ metrics, conversionJourney, statusData }) {
         <KPITile icon={AlertTriangle} label="Lost"          value={metrics.lost}           color="amber" />
       </div>
 
-      {/* Conversion Journey */}
       <ChartCard title="Conversion Journey" subtitle="Lead → Contact → Follow-up → Qualified → Converted" icon={Target}>
         {metrics.total === 0 ? (
           <EmptyState message="No leads to analyze yet" />
         ) : (
-          <>
-            <div className="mb-6 space-y-4">
-              {conversionJourney.map((step, i) => {
-                const pct = metrics.total ? Math.round((step.value / metrics.total) * 100) : 0;
-                const isLast = i === conversionJourney.length - 1;
-                return (
-                  <div key={step.name}>
-                    <div className="mb-1.5 flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-2 font-semibold text-brand-ink">
-                        <span
-                          className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                          style={{ background: step.fill }}
-                        >
-                          {i + 1}
-                        </span>
-                        {step.name}
-                      </span>
-                      <span className="font-mono font-bold text-brand-ink tabular-nums">
-                        {step.value} · <span className="text-brand-magenta">{pct}%</span>
-                      </span>
-                    </div>
-                    <div className="h-8 overflow-hidden rounded-lg bg-brand-lilac/40">
-                      <div
-                        className="flex h-full items-center justify-end rounded-lg px-3 text-[11px] font-bold text-white transition-all duration-1000"
-                        style={{
-                          width: `${Math.max(pct, 10)}%`,
-                          background: `linear-gradient(to right, ${step.fill}dd, ${step.fill})`,
-                        }}
+          <div className="space-y-4">
+            {conversionJourney.map((step, i) => {
+              const pct = metrics.total ? Math.round((step.value / metrics.total) * 100) : 0;
+              const isLast = i === conversionJourney.length - 1;
+              return (
+                <div key={step.name}>
+                  <div className="mb-1.5 flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-2 font-semibold text-brand-ink">
+                      <span
+                        className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                        style={{ background: step.fill }}
                       >
-                        {pct}%
-                      </div>
-                    </div>
-                    {!isLast && (
-                      <div className="mt-1 ml-3 flex items-center gap-2 text-[10px] text-brand-ink/40">
-                        <TrendingDown size={10} />
-                        <span>
-                          Drop: {conversionJourney[i].value - conversionJourney[i + 1].value} leads
-                        </span>
-                      </div>
-                    )}
+                        {i + 1}
+                      </span>
+                      {step.name}
+                    </span>
+                    <span className="font-mono font-bold text-brand-ink tabular-nums">
+                      {step.value} · <span className="text-brand-magenta">{pct}%</span>
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          </>
+                  <div className="h-8 overflow-hidden rounded-lg bg-brand-lilac/40">
+                    <div
+                      className="flex h-full items-center justify-end rounded-lg px-3 text-[11px] font-bold text-white transition-all duration-1000"
+                      style={{
+                        width: `${Math.max(pct, 10)}%`,
+                        background: `linear-gradient(to right, ${step.fill}dd, ${step.fill})`,
+                      }}
+                    >
+                      {pct}%
+                    </div>
+                  </div>
+                  {!isLast && (
+                    <div className="mt-1 ml-3 flex items-center gap-2 text-[10px] text-brand-ink/40">
+                      <TrendingDown size={10} />
+                      <span>
+                        Drop: {conversionJourney[i].value - conversionJourney[i + 1].value} leads
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </ChartCard>
 
-      {/* Status breakdown for reference */}
       <ChartCard title="Final Status Distribution" subtitle="Where leads currently sit" icon={Layers}>
         {metrics.total === 0 ? (
           <EmptyState message="No leads yet" />
