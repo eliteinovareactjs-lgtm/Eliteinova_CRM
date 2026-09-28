@@ -9,6 +9,8 @@ import {
   Flag, PartyPopper, Edit3, RotateCcw, Info, TrendingUp, GitBranch,
   PhoneOff, PhoneMissed, Star, Sparkles, Radio, UserCheck, Zap, Hash as HashIcon,
   PhoneOutgoing as PhoneOut, MessageSquare, Briefcase, ArrowRight, PlusCircle,
+  AlertTriangle, XCircle, Copy as CopyIcon, Save as SaveIcon,
+  Grid3x3, List, MoreVertical, ChevronRight, Info as InfoIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { IVR_CONFIGS, AGENTS } from '../../data/mockData';
@@ -33,6 +35,10 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 
 const ROUTING_STRATEGIES = ['Round Robin', 'Least Busy', 'Longest Idle', 'Skill-Based'];
 
+const MENU_ACTIONS = ['Department', 'Agent', 'Team', 'Queue', 'Voicemail', 'Repeat Menu', 'End Call'];
+
+const AVAILABLE_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '*', '#'];
+
 const DEFAULT_MENU = [
   { key: '1', action: 'Department', target: 'Sales',         label: 'Sales' },
   { key: '2', action: 'Department', target: 'Support',       label: 'Support' },
@@ -52,7 +58,7 @@ const DEFAULT_BUSINESS_HOURS = {
 };
 
 const DEFAULT_NUMBERS = [
-  { id: 'ivr-1', number: '+91  98 7654 3210', label: 'Primary IVR', status: 'Active', assignedTo: 'All Departments' },
+  { id: 'ivr-1', number: '+91 98 7654 3210', label: 'Primary IVR', status: 'Active', assignedTo: 'All Departments' },
 ];
 
 const DEFAULT_HOLIDAYS = [
@@ -62,6 +68,31 @@ const DEFAULT_HOLIDAYS = [
   { id: 'h-4', name: 'Diwali',        date: '2026-11-08', recurring: true },
   { id: 'h-5', name: 'Christmas',     date: '2026-12-25', recurring: true },
 ];
+
+const DEFAULT_AFTER_HOURS = {
+  enabled: true,
+  message: 'Thank you for calling. Our office is currently closed. Please call back during business hours or leave a message after the beep.',
+  forwardToVoicemail: true,
+  forwardNumber: '',
+  allowCallback: true,
+};
+
+const DEFAULT_VOICEMAIL = {
+  enabled: true,
+  greeting: 'Please leave your name, number, and a brief message after the beep. We will get back to you shortly.',
+  maxDuration: 120,
+  transcribe: true,
+  notifyEmail: true,
+  notificationEmail: '',
+};
+
+const DEFAULT_MISSED_CALL = {
+  autoCallback: true,
+  smsToCaller: true,
+  smsTemplate: 'Hi! Sorry we missed your call. We will get back to you shortly.',
+  assignToAgent: true,
+  createFollowUp: true,
+};
 
 const STORAGE_PREFIX = 'ivr:';
 
@@ -87,6 +118,52 @@ const saveState = (key, value) => {
   } catch { /* ignore */ }
 };
 
+/* Robust phone validator: 7-15 digits, optional +, spaces, dashes, parentheses */
+const isValidPhone = (val) => {
+  if (!val) return false;
+  const digits = String(val).replace(/\D/g, '');
+  return digits.length >= 7 && digits.length <= 15;
+};
+
+/* Simple email validator */
+const isValidEmail = (val) => {
+  if (!val) return true; // optional
+  return /^\S+@\S+\.\S+$/.test(val);
+};
+
+/* Normalize a partial config into a full config with all required keys */
+const buildFullConfig = (partial = {}) => ({
+  welcomeMessage: partial.welcomeMessage || 'Welcome to our CRM. Please listen carefully to the following options.',
+  language: partial.language || 'English',
+  voice: partial.voice || 'Female',
+  recording: partial.recording ?? true,
+  voicemailOn: partial.voicemailOn ?? true,
+  departments: partial.departments || ['Sales', 'Support', 'Billing'],
+  teams: partial.teams || ['Team A', 'Team B'],
+  agentRouting: partial.agentRouting || 'Round Robin',
+  menuOptionsDetailed: partial.menuOptionsDetailed || DEFAULT_MENU,
+  businessHoursSchedule: partial.businessHoursSchedule || DEFAULT_BUSINESS_HOURS,
+  queue: {
+    enabled: true,
+    maxWait: 5,
+    music: 'Default Hold Music',
+    overflow: 'Voicemail',
+    welcomeHold: 'All our agents are currently busy. Please hold. Your call will be answered in the order it was received.',
+    ...(partial.queue || {}),
+  },
+  routingRules: partial.routingRules || [
+    { id: 'rule-1', name: 'Business Hours Routing', condition: '9 AM – 7 PM',        action: 'Route to available agent' },
+    { id: 'rule-2', name: 'After-Hours Routing',    condition: '7 PM – 9 AM',        action: 'Play voicemail message' },
+    { id: 'rule-3', name: 'Holiday Routing',        condition: 'Public holidays',     action: 'Forward to manager line' },
+    { id: 'rule-4', name: 'Overflow Routing',       condition: 'No agent available > 30s', action: 'Queue and callback' },
+  ],
+  ivrNumbers: partial.ivrNumbers || DEFAULT_NUMBERS,
+  holidays: partial.holidays || DEFAULT_HOLIDAYS,
+  afterHours: { ...DEFAULT_AFTER_HOURS, ...(partial.afterHours || {}) },
+  voicemail: { ...DEFAULT_VOICEMAIL, ...(partial.voicemail || partial.voicemailConfig || {}) },
+  missedCallHandling: { ...DEFAULT_MISSED_CALL, ...(partial.missedCallHandling || {}) },
+});
+
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════ */
@@ -95,6 +172,8 @@ export default function IVR() {
   const [tab, setTab] = useState('config');
   const [toast, setToast] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   /* ── Base config from mockData ── */
   const baseConfig = useMemo(
@@ -102,85 +181,29 @@ export default function IVR() {
     [activeWebsiteId]
   );
 
-  /* ── Full config with all extended fields, persisted per website ── */
-  const [config, setConfig] = useState({});
+  /* ── Full config, persisted per website ── */
+  const [config, setConfig] = useState(() => buildFullConfig(baseConfig));
 
+  /* Rebuild when activeWebsiteId or baseConfig changes */
   useEffect(() => {
     const stored = loadState(`config:${activeWebsiteId}`, null);
-    const merged = {
-      ...baseConfig,
-      menuOptionsDetailed:    baseConfig.menuOptionsDetailed || DEFAULT_MENU,
-      businessHoursSchedule:  baseConfig.businessHoursSchedule || DEFAULT_BUSINESS_HOURS,
-      departments:            baseConfig.departments || ['Sales', 'Support', 'Billing'],
-      teams:                  baseConfig.teams || ['Team A', 'Team B'],
-      agentRouting:           baseConfig.agentRouting || 'Round Robin',
-      queue: baseConfig.queue || {
-        enabled: true,
-        maxWait: 5,
-        music: 'Default Hold Music',
-        overflow: 'Voicemail',
-        welcomeHold: 'All our agents are currently busy. Please hold. Your call will be answered in the order it was received.',
-      },
-      routingRules: baseConfig.routingRules || [
-        { id: 1, name: 'Business Hours Routing', condition: '9 AM – 7 PM',        action: 'Route to available agent' },
-        { id: 2, name: 'After-Hours Routing',    condition: '7 PM – 9 AM',        action: 'Play voicemail message' },
-        { id: 3, name: 'Holiday Routing',        condition: 'Public holidays',     action: 'Forward to manager line' },
-        { id: 4, name: 'Overflow Routing',       condition: 'No agent available > 30s', action: 'Queue and callback' },
-      ],
-      /* ✨ NEW FIELDS */
-      ivrNumbers: baseConfig.ivrNumbers || DEFAULT_NUMBERS,
-      holidays: baseConfig.holidays || DEFAULT_HOLIDAYS,
-      afterHours: baseConfig.afterHours || {
-        enabled: true,
-        message: 'Thank you for calling. Our office is currently closed. Please call back during business hours or leave a message after the beep.',
-        forwardToVoicemail: true,
-        forwardNumber: '',
-        allowCallback: true,
-      },
-      voicemail: baseConfig.voicemailConfig || {
-        enabled: true,
-        greeting: 'Please leave your name, number, and a brief message after the beep. We will get back to you shortly.',
-        maxDuration: 120,
-        transcribe: true,
-        notifyEmail: true,
-        notificationEmail: '',
-      },
-      missedCallHandling: baseConfig.missedCallHandling || {
-        autoCallback: true,
-        smsToCaller: true,
-        smsTemplate: 'Hi! Sorry we missed your call. We will get back to you shortly.',
-        assignToAgent: true,
-        createFollowUp: true,
-      },
-      recording:    baseConfig.recording    ?? true,
-      voicemailOn:  baseConfig.voicemailOn  ?? true,
-      language:     baseConfig.language     || 'English',
-      voice:        baseConfig.voice        || 'Female',
-      welcomeMessage: baseConfig.welcomeMessage || 'Welcome to our CRM. Please listen carefully to the following options.',
-    };
-    if (stored) {
-      setConfig({ ...merged, ...stored });
-    } else {
-      setConfig(merged);
-    }
+    const merged = buildFullConfig(stored ? { ...baseConfig, ...stored } : baseConfig);
+    setConfig(merged);
+    setHasUnsavedChanges(false);
     setTab('config');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWebsiteId, baseConfig]);
+  }, [activeWebsiteId]);
 
-  /* Persist on change (debounced-ish via effect) */
-  useEffect(() => {
-    if (config && Object.keys(config).length > 0) {
-      saveState(`config:${activeWebsiteId}`, config);
-    }
-  }, [config, activeWebsiteId]);
-
-  /* Agents for website */
+  /* ── Agents for website ── */
   const agents = useMemo(
     () => AGENTS.filter((a) => a.websiteId === activeWebsiteId),
     [activeWebsiteId]
   );
 
-  const updateConfig = (updates) => setConfig((prev) => ({ ...prev, ...updates }));
+  const updateConfig = (updates) => {
+    setConfig((prev) => ({ ...prev, ...updates }));
+    setHasUnsavedChanges(true);
+  };
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -188,28 +211,36 @@ export default function IVR() {
   };
 
   const handleSave = () => {
+    /* Validation */
+    const errors = [];
+    if (config.queue?.enabled && (!config.queue.maxWait || config.queue.maxWait <= 0)) {
+      errors.push('Queue max wait must be greater than 0');
+    }
+    if (config.voicemail?.enabled && (!config.voicemail.maxDuration || config.voicemail.maxDuration < 10)) {
+      errors.push('Voicemail duration must be at least 10 seconds');
+    }
+    if (config.afterHours?.forwardNumber && !isValidPhone(config.afterHours.forwardNumber)) {
+      errors.push('After-hours forward number is invalid');
+    }
+    if (config.voicemail?.notifyEmail && config.voicemail.notificationEmail && !isValidEmail(config.voicemail.notificationEmail)) {
+      errors.push('Voicemail notification email is invalid');
+    }
+    if (errors.length > 0) {
+      showToast(errors[0], 'error');
+      return;
+    }
+
     saveState(`config:${activeWebsiteId}`, config);
+    setHasUnsavedChanges(false);
     showToast(`IVR configuration saved for ${activeWebsite?.name}`);
   };
 
-  const handleReset = () => {
+  const performReset = () => {
     localStorage.removeItem(`${STORAGE_PREFIX}config:${activeWebsiteId}`);
     const fresh = IVR_CONFIGS.find((c) => c.projectId === activeWebsiteId) || IVR_CONFIGS[0] || {};
-    setConfig({
-      ...fresh,
-      menuOptionsDetailed:    fresh.menuOptionsDetailed || DEFAULT_MENU,
-      businessHoursSchedule:  fresh.businessHoursSchedule || DEFAULT_BUSINESS_HOURS,
-      departments:            fresh.departments || ['Sales', 'Support', 'Billing'],
-      teams:                  fresh.teams || ['Team A', 'Team B'],
-      agentRouting:           fresh.agentRouting || 'Round Robin',
-      queue:                  fresh.queue || { enabled: true, maxWait: 5, music: 'Default Hold Music', overflow: 'Voicemail', welcomeHold: '' },
-      routingRules:           fresh.routingRules || [],
-      ivrNumbers:             DEFAULT_NUMBERS,
-      holidays:               DEFAULT_HOLIDAYS,
-      afterHours:             fresh.afterHours || { enabled: true, message: '', forwardToVoicemail: true, forwardNumber: '', allowCallback: true },
-      voicemail:              fresh.voicemailConfig || { enabled: true, greeting: '', maxDuration: 120, transcribe: true, notifyEmail: true, notificationEmail: '' },
-      missedCallHandling:     fresh.missedCallHandling || { autoCallback: true, smsToCaller: true, smsTemplate: '', assignToAgent: true, createFollowUp: true },
-    });
+    setConfig(buildFullConfig(fresh));
+    setHasUnsavedChanges(false);
+    setConfirmReset(false);
     showToast('Changes reverted', 'error');
   };
 
@@ -222,7 +253,7 @@ export default function IVR() {
 
   const counts = {
     numbers: config.ivrNumbers?.length || 0,
-    menu:    config.menuOptionsDetailed?.length || 0,
+    menu: config.menuOptionsDetailed?.length || 0,
     routing: config.routingRules?.length || 0,
     holidays: config.holidays?.length || 0,
   };
@@ -236,7 +267,15 @@ export default function IVR() {
         {/* ═══ HEADER ═══ */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="font-display text-xl font-semibold text-brand-ink">IVR Management</h1>
+            <h1 className="flex items-center gap-2 font-display text-xl font-semibold text-brand-ink">
+              IVR Management
+              {hasUnsavedChanges && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+                  Unsaved
+                </span>
+              )}
+            </h1>
             <p className="flex items-center gap-1.5 text-sm text-brand-ink/50">
               <PhoneCall size={13} className="text-brand-magenta" />
               Configure inbound call flows for{' '}
@@ -246,14 +285,18 @@ export default function IVR() {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={handleReset}
+              onClick={() => setConfirmReset(true)}
               className="group inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-4 py-2 text-xs font-semibold text-brand-ink shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-magenta/40 hover:shadow-md"
             >
               <RotateCcw size={13} className="transition-transform group-hover:-rotate-90" /> Reset
             </button>
             <button
               onClick={handleSave}
-              className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-4 py-2 text-xs font-semibold text-white shadow-[0_6px_18px_-6px_rgba(227,28,121,0.6)] transition-all hover:-translate-y-0.5 hover:brightness-110"
+              className={`group inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white shadow-[0_6px_18px_-6px_rgba(227,28,121,0.6)] transition-all hover:-translate-y-0.5 hover:brightness-110 ${
+                hasUnsavedChanges
+                  ? 'bg-gradient-to-r from-brand-magenta to-brand-purple'
+                  : 'bg-gradient-to-r from-slate-400 to-slate-500'
+              }`}
             >
               <Save size={14} className="transition-transform group-hover:scale-110" /> Save
             </button>
@@ -270,7 +313,6 @@ export default function IVR() {
                 <h2 className="font-display text-sm font-semibold text-brand-ink">Live Snapshot</h2>
               </div>
             </div>
-            <p className="text-[11px] text-brand-ink/40">Click a card to switch tab</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
@@ -306,16 +348,26 @@ export default function IVR() {
         </div>
 
         {/* ═══ TAB CONTENT ═══ */}
-        {tab === 'config' && <ConfigTab config={config} onUpdate={updateConfig} onCopy={handleCopy} copiedId={copiedId} />}
-        {tab === 'numbers' && <NumbersTab config={config} onUpdate={updateConfig} onCopy={handleCopy} copiedId={copiedId} />}
-        {tab === 'menu' && <MenuTab config={config} onUpdate={updateConfig} />}
-        {tab === 'routing' && <RoutingTab config={config} onUpdate={updateConfig} agents={agents} />}
-        {tab === 'hours' && <HoursTab config={config} onUpdate={updateConfig} />}
-        {tab === 'holidays' && <HolidaysTab config={config} onUpdate={updateConfig} />}
-        {tab === 'queue' && <QueueTab config={config} onUpdate={updateConfig} />}
-        {tab === 'afterhours' && <AfterHoursTab config={config} onUpdate={updateConfig} />}
-        {tab === 'voicemail' && <VoicemailTab config={config} onUpdate={updateConfig} />}
-        {tab === 'missed' && <MissedCallTab config={config} onUpdate={updateConfig} />}
+        {tab === 'config' && <ConfigTab config={config} onUpdate={updateConfig} />}
+        {tab === 'numbers' && <NumbersTab config={config} onUpdate={updateConfig} onCopy={handleCopy} copiedId={copiedId} showToast={showToast} />}
+        {tab === 'menu' && <MenuTab config={config} onUpdate={updateConfig} showToast={showToast} />}
+        {tab === 'routing' && <RoutingTab config={config} onUpdate={updateConfig} agents={agents} showToast={showToast} />}
+        {tab === 'hours' && <HoursTab config={config} onUpdate={updateConfig} showToast={showToast} />}
+        {tab === 'holidays' && <HolidaysTab config={config} onUpdate={updateConfig} showToast={showToast} />}
+        {tab === 'queue' && <QueueTab config={config} onUpdate={updateConfig} showToast={showToast} />}
+        {tab === 'afterhours' && <AfterHoursTab config={config} onUpdate={updateConfig} showToast={showToast} />}
+        {tab === 'voicemail' && <VoicemailTab config={config} onUpdate={updateConfig} showToast={showToast} />}
+        {tab === 'missed' && <MissedCallTab config={config} onUpdate={updateConfig} showToast={showToast} />}
+
+        {confirmReset && (
+          <ConfirmDialog
+            title="Reset IVR configuration?"
+            message="This will revert all changes back to the default values. This action cannot be undone."
+            confirmLabel="Reset Everything"
+            onCancel={() => setConfirmReset(false)}
+            onConfirm={performReset}
+          />
+        )}
 
         {toast && <Toast message={toast.msg} type={toast.type} />}
       </div>
@@ -366,10 +418,17 @@ function KpiCard({ icon: Icon, label, value, sub, color = 'purple', active, onCl
 /* ═══════════════════════════════════════════════════════════════
    TAB 1 — CONFIGURATION
    ═══════════════════════════════════════════════════════════════ */
-function ConfigTab({ config, onUpdate, onCopy, copiedId }) {
+function ConfigTab({ config, onUpdate }) {
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+
+  const handlePreview = () => {
+    setPreviewPlaying(true);
+    setTimeout(() => setPreviewPlaying(false), 3000);
+  };
+
   return (
     <div className="space-y-4">
-      <div className="card !p-5 space-y-4">
+      <div className="card !p-5 space-y-5">
         <SectionHeader icon={Settings} title="General Configuration" subtitle="Basic IVR settings applied to all calls" />
 
         <div>
@@ -429,8 +488,21 @@ function ConfigTab({ config, onUpdate, onCopy, copiedId }) {
           <p className="mt-2 text-sm italic text-brand-ink/80">
             "{config.welcomeMessage || 'Welcome to our CRM.'}"
           </p>
-          <button className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-brand-magenta shadow-sm hover:bg-brand-lilac/40">
-            <PlayCircle size={12} /> Play Preview
+          <button
+            onClick={handlePreview}
+            disabled={previewPlaying}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-brand-magenta shadow-sm transition-all hover:bg-brand-lilac/40 disabled:opacity-60"
+          >
+            {previewPlaying ? (
+              <>
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-brand-magenta/40 border-t-brand-magenta" />
+                Playing…
+              </>
+            ) : (
+              <>
+                <PlayCircle size={12} /> Play Preview
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -441,18 +513,27 @@ function ConfigTab({ config, onUpdate, onCopy, copiedId }) {
 /* ═══════════════════════════════════════════════════════════════
    TAB 2 — NUMBERS
    ═══════════════════════════════════════════════════════════════ */
-function NumbersTab({ config, onUpdate, onCopy, copiedId }) {
+function NumbersTab({ config, onUpdate, onCopy, copiedId, showToast }) {
   const numbers = config.ivrNumbers || [];
   const [newNumber, setNewNumber] = useState({ number: '', label: '', assignedTo: 'All Departments' });
 
   const handleAdd = () => {
-    if (!newNumber.number.trim()) return;
+    const num = newNumber.number.trim();
+    if (!num) return;
+    if (!isValidPhone(num)) {
+      showToast('Please enter a valid phone number (7-15 digits)', 'error');
+      return;
+    }
+    if (numbers.some((n) => n.number.replace(/\D/g, '') === num.replace(/\D/g, ''))) {
+      showToast('This number is already configured', 'error');
+      return;
+    }
     onUpdate({
       ivrNumbers: [
         ...numbers,
         {
           id: uid('ivr'),
-          number: newNumber.number.trim(),
+          number: num,
           label: newNumber.label.trim() || 'Additional IVR Line',
           status: 'Active',
           assignedTo: newNumber.assignedTo,
@@ -460,6 +541,7 @@ function NumbersTab({ config, onUpdate, onCopy, copiedId }) {
       ],
     });
     setNewNumber({ number: '', label: '', assignedTo: 'All Departments' });
+    showToast('Number added');
   };
 
   const updateNumber = (id, updates) => {
@@ -579,18 +661,36 @@ function NumbersTab({ config, onUpdate, onCopy, copiedId }) {
 /* ═══════════════════════════════════════════════════════════════
    TAB 3 — MENU
    ═══════════════════════════════════════════════════════════════ */
-function MenuTab({ config, onUpdate }) {
+function MenuTab({ config, onUpdate, showToast }) {
   const menu = config.menuOptionsDetailed || [];
+  const usedKeys = menu.map((m) => m.key);
+  const availableKeys = AVAILABLE_KEYS.filter((k) => !usedKeys.includes(k));
 
   const addOption = () => {
-    const used = menu.map((m) => m.key);
-    const nextKey = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].find((k) => !used.includes(k)) || String(menu.length + 1);
+    if (availableKeys.length === 0) {
+      showToast('All keypad keys (0-9, *, #) are already used', 'error');
+      return;
+    }
+    const nextKey = availableKeys[0];
     onUpdate({
-      menuOptionsDetailed: [...menu, { key: nextKey, action: 'Department', target: 'Sales', label: 'New Option' }],
+      menuOptionsDetailed: [
+        ...menu,
+        { key: nextKey, action: 'Department', target: 'Sales', label: 'New Option' },
+      ],
     });
   };
 
   const updateOption = (idx, updates) => {
+    /* Prevent duplicate keys */
+    if (updates.key) {
+      const newKey = String(updates.key).slice(0, 1);
+      const duplicateIdx = menu.findIndex((m, i) => i !== idx && m.key === newKey);
+      if (duplicateIdx !== -1) {
+        showToast(`Key "${newKey}" is already used by another option`, 'error');
+        return;
+      }
+      updates = { ...updates, key: newKey };
+    }
     const next = [...menu];
     next[idx] = { ...next[idx], ...updates };
     onUpdate({ menuOptionsDetailed: next });
@@ -603,14 +703,20 @@ function MenuTab({ config, onUpdate }) {
   return (
     <div className="space-y-4">
       <div className="card !p-5 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionHeader icon={Hash} title="IVR Menu & Keypad Options" subtitle="What happens when each key is pressed" />
-          <button
-            onClick={addOption}
-            className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-3.5 py-2 text-[11px] font-semibold text-white shadow-card hover:brightness-110"
-          >
-            <Plus size={12} /> Add Key
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-brand-lilac/60 px-2.5 py-1 text-[10px] font-bold text-brand-purple">
+              {usedKeys.length} / {AVAILABLE_KEYS.length} keys used
+            </span>
+            <button
+              onClick={addOption}
+              disabled={availableKeys.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-3.5 py-2 text-[11px] font-semibold text-white shadow-card hover:brightness-110 disabled:opacity-60"
+            >
+              <Plus size={12} /> Add Key
+            </button>
+          </div>
         </div>
 
         {menu.length === 0 ? (
@@ -620,12 +726,17 @@ function MenuTab({ config, onUpdate }) {
             {menu.map((opt, idx) => (
               <div key={idx} className="grid grid-cols-1 gap-2 rounded-xl border border-brand-lilac bg-white p-3 sm:grid-cols-12 sm:items-center">
                 <div className="sm:col-span-1">
-                  <input
+                  <select
                     value={opt.key}
-                    onChange={(e) => updateOption(idx, { key: e.target.value.slice(0, 1) })}
-                    maxLength={1}
+                    onChange={(e) => updateOption(idx, { key: e.target.value })}
                     className="w-full rounded-lg border border-brand-lilac bg-white px-2 py-2 text-center font-mono text-base font-bold outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
-                  />
+                  >
+                    {/* Include current key even if it's the only occurrence */}
+                    <option value={opt.key}>{opt.key}</option>
+                    {AVAILABLE_KEYS.filter((k) => k !== opt.key && !usedKeys.includes(k)).map((k) => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="sm:col-span-3">
                   <select
@@ -633,13 +744,9 @@ function MenuTab({ config, onUpdate }) {
                     onChange={(e) => updateOption(idx, { action: e.target.value })}
                     className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
                   >
-                    <option>Department</option>
-                    <option>Agent</option>
-                    <option>Team</option>
-                    <option>Queue</option>
-                    <option>Voicemail</option>
-                    <option>Repeat Menu</option>
-                    <option>End Call</option>
+                    {MENU_ACTIONS.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="sm:col-span-3">
@@ -647,7 +754,8 @@ function MenuTab({ config, onUpdate }) {
                     value={opt.target}
                     onChange={(e) => updateOption(idx, { target: e.target.value })}
                     placeholder="Target (e.g. Sales)"
-                    className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+                    disabled={opt.action === 'Repeat Menu' || opt.action === 'End Call' || opt.action === 'Voicemail'}
+                    className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15 disabled:bg-slate-50 disabled:text-slate-400"
                   />
                 </div>
                 <div className="sm:col-span-4">
@@ -700,7 +808,7 @@ function MenuTab({ config, onUpdate }) {
 /* ═══════════════════════════════════════════════════════════════
    TAB 4 — ROUTING
    ═══════════════════════════════════════════════════════════════ */
-function RoutingTab({ config, onUpdate, agents }) {
+function RoutingTab({ config, onUpdate, agents, showToast }) {
   const rules = config.routingRules || [];
 
   const addRule = () => {
@@ -720,23 +828,32 @@ function RoutingTab({ config, onUpdate, agents }) {
     onUpdate({ routingRules: rules.filter((r) => r.id !== id) });
   };
 
-  /* Departments + Teams CRUD */
   const departments = config.departments || [];
   const teams = config.teams || [];
   const [newDept, setNewDept] = useState('');
   const [newTeam, setNewTeam] = useState('');
 
   const addDept = () => {
-    if (!newDept.trim()) return;
-    onUpdate({ departments: [...departments, newDept.trim()] });
+    const d = newDept.trim();
+    if (!d) return;
+    if (departments.includes(d)) {
+      showToast('Department already exists', 'error');
+      return;
+    }
+    onUpdate({ departments: [...departments, d] });
     setNewDept('');
   };
 
   const removeDept = (d) => onUpdate({ departments: departments.filter((x) => x !== d) });
 
   const addTeam = () => {
-    if (!newTeam.trim()) return;
-    onUpdate({ teams: [...teams, newTeam.trim()] });
+    const t = newTeam.trim();
+    if (!t) return;
+    if (teams.includes(t)) {
+      showToast('Team already exists', 'error');
+      return;
+    }
+    onUpdate({ teams: [...teams, t] });
     setNewTeam('');
   };
 
@@ -746,7 +863,7 @@ function RoutingTab({ config, onUpdate, agents }) {
     <div className="space-y-4">
       {/* Routing Rules */}
       <div className="card !p-5 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionHeader icon={Route} title="Call Routing Rules" subtitle="If-then logic for incoming calls" />
           <button
             onClick={addRule}
@@ -833,17 +950,21 @@ function RoutingTab({ config, onUpdate, agents }) {
       {/* Departments */}
       <div className="card !p-5 space-y-4">
         <SectionHeader icon={Building2} title="Departments" subtitle="Route calls to different business units" />
-        <div className="flex flex-wrap gap-2">
-          {departments.map((d) => (
-            <span key={d} className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-3 py-1.5 text-xs font-semibold text-brand-ink">
-              <Building2 size={11} className="text-brand-magenta" />
-              {d}
-              <button onClick={() => removeDept(d)} className="rounded-full p-0.5 text-rose-500 hover:bg-rose-50">
-                <X size={11} />
-              </button>
-            </span>
-          ))}
-        </div>
+        {departments.length === 0 ? (
+          <p className="text-xs text-brand-ink/40">No departments yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {departments.map((d) => (
+              <span key={d} className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-3 py-1.5 text-xs font-semibold text-brand-ink">
+                <Building2 size={11} className="text-brand-magenta" />
+                {d}
+                <button onClick={() => removeDept(d)} className="rounded-full p-0.5 text-rose-500 hover:bg-rose-50">
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
           <input
             value={newDept}
@@ -865,17 +986,21 @@ function RoutingTab({ config, onUpdate, agents }) {
       {/* Teams */}
       <div className="card !p-5 space-y-4">
         <SectionHeader icon={Users} title="Teams / Groups" subtitle="Route calls to specific teams" />
-        <div className="flex flex-wrap gap-2">
-          {teams.map((t) => (
-            <span key={t} className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-3 py-1.5 text-xs font-semibold text-brand-ink">
-              <Users size={11} className="text-brand-purple" />
-              {t}
-              <button onClick={() => removeTeam(t)} className="rounded-full p-0.5 text-rose-500 hover:bg-rose-50">
-                <X size={11} />
-              </button>
-            </span>
-          ))}
-        </div>
+        {teams.length === 0 ? (
+          <p className="text-xs text-brand-ink/40">No teams yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {teams.map((t) => (
+              <span key={t} className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-3 py-1.5 text-xs font-semibold text-brand-ink">
+                <Users size={11} className="text-brand-purple" />
+                {t}
+                <button onClick={() => removeTeam(t)} className="rounded-full p-0.5 text-rose-500 hover:bg-rose-50">
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
           <input
             value={newTeam}
@@ -900,7 +1025,7 @@ function RoutingTab({ config, onUpdate, agents }) {
 /* ═══════════════════════════════════════════════════════════════
    TAB 5 — HOURS
    ═══════════════════════════════════════════════════════════════ */
-function HoursTab({ config, onUpdate }) {
+function HoursTab({ config, onUpdate, showToast }) {
   const schedule = config.businessHoursSchedule || {};
 
   const updateDay = (day, updates) => {
@@ -910,6 +1035,26 @@ function HoursTab({ config, onUpdate }) {
         [day]: { ...schedule[day], ...updates },
       },
     });
+  };
+
+  const copyToWeekdays = (sourceDay) => {
+    const src = schedule[sourceDay];
+    if (!src) return;
+    const next = { ...schedule };
+    ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].forEach((d) => {
+      next[d] = { ...src };
+    });
+    onUpdate({ businessHoursSchedule: next });
+    showToast(`Copied ${sourceDay} hours to weekdays`);
+  };
+
+  const copyToAllDays = (sourceDay) => {
+    const src = schedule[sourceDay];
+    if (!src) return;
+    const next = {};
+    DAYS.forEach((d) => { next[d] = { ...src }; });
+    onUpdate({ businessHoursSchedule: next });
+    showToast(`Copied ${sourceDay} hours to all days`);
   };
 
   return (
@@ -960,6 +1105,25 @@ function HoursTab({ config, onUpdate }) {
               ) : (
                 <span className="rounded-full bg-rose-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-500">Closed</span>
               )}
+
+              {d.open && (
+                <div className="ml-auto flex items-center gap-1.5">
+                  <button
+                    onClick={() => copyToWeekdays(day)}
+                    className="rounded-lg border border-brand-lilac bg-white px-2.5 py-1.5 text-[10px] font-semibold text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:text-brand-magenta"
+                    title="Copy to all weekdays"
+                  >
+                    → Weekdays
+                  </button>
+                  <button
+                    onClick={() => copyToAllDays(day)}
+                    className="rounded-lg border border-brand-lilac bg-white px-2.5 py-1.5 text-[10px] font-semibold text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:text-brand-magenta"
+                    title="Copy to all days"
+                  >
+                    → All
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -971,19 +1135,32 @@ function HoursTab({ config, onUpdate }) {
 /* ═══════════════════════════════════════════════════════════════
    TAB 6 — HOLIDAYS
    ═══════════════════════════════════════════════════════════════ */
-function HolidaysTab({ config, onUpdate }) {
+function HolidaysTab({ config, onUpdate, showToast }) {
   const holidays = config.holidays || [];
   const [form, setForm] = useState({ name: '', date: '', recurring: true });
 
   const handleAdd = () => {
-    if (!form.name.trim() || !form.date) return;
+    const name = form.name.trim();
+    if (!name || !form.date) return;
+
+    /* Reject past dates only if not recurring */
+    if (!form.recurring) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (new Date(form.date) < today) {
+        showToast('Please choose a future date', 'error');
+        return;
+      }
+    }
+
     onUpdate({
       holidays: [
         ...holidays,
-        { id: uid('h'), name: form.name.trim(), date: form.date, recurring: form.recurring },
+        { id: uid('h'), name, date: form.date, recurring: form.recurring },
       ].sort((a, b) => a.date.localeCompare(b.date)),
     });
     setForm({ name: '', date: '', recurring: true });
+    showToast('Holiday added');
   };
 
   const updateHoliday = (id, updates) => {
@@ -1060,12 +1237,6 @@ function HolidaysTab({ config, onUpdate }) {
                   />
                   <p className="mt-0.5 text-[11px] text-brand-ink/60">{formatDate(h.date)}</p>
                 </div>
-                <input
-                  type="date"
-                  value={h.date}
-                  onChange={(e) => updateHoliday(h.id, { date: e.target.value })}
-                  className="shrink-0 rounded-lg border border-brand-lilac bg-white px-2.5 py-1.5 text-xs outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
-                />
                 <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 py-1.5 text-[10px] font-semibold text-brand-ink/70">
                   <input
                     type="checkbox"
@@ -1093,12 +1264,20 @@ function HolidaysTab({ config, onUpdate }) {
 /* ═══════════════════════════════════════════════════════════════
    TAB 7 — QUEUE
    ═══════════════════════════════════════════════════════════════ */
-function QueueTab({ config, onUpdate }) {
+function QueueTab({ config, onUpdate, showToast }) {
   const queue = config.queue || {};
+
+  const setMaxWait = (val) => {
+    const n = Number(val);
+    if (isNaN(n)) return;
+    /* Clamp 1–60 */
+    const clamped = Math.max(1, Math.min(60, n));
+    onUpdate({ queue: { ...queue, maxWait: clamped } });
+  };
 
   return (
     <div className="card !p-5 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SectionHeader icon={Waves} title="Call Queue" subtitle="When all agents are busy, callers wait in a queue" />
         <button
           onClick={() => onUpdate({ queue: { ...queue, enabled: !queue.enabled } })}
@@ -1118,10 +1297,12 @@ function QueueTab({ config, onUpdate }) {
               <input
                 type="number"
                 min={1}
-                value={queue.maxWait || 5}
-                onChange={(e) => onUpdate({ queue: { ...queue, maxWait: Number(e.target.value) } })}
+                max={60}
+                value={queue.maxWait ?? 5}
+                onChange={(e) => setMaxWait(e.target.value)}
                 className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
               />
+              <p className="mt-1 text-[10px] text-brand-ink/50">Between 1 and 60 minutes</p>
             </div>
             <div>
               <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-ink/70">
@@ -1195,14 +1376,19 @@ function QueueTab({ config, onUpdate }) {
 /* ═══════════════════════════════════════════════════════════════
    TAB 8 — AFTER-HOURS
    ═══════════════════════════════════════════════════════════════ */
-function AfterHoursTab({ config, onUpdate }) {
+function AfterHoursTab({ config, onUpdate, showToast }) {
   const afterHours = config.afterHours || {};
-
   const set = (updates) => onUpdate({ afterHours: { ...afterHours, ...updates } });
+
+  const handleForwardNumberBlur = () => {
+    if (afterHours.forwardNumber && !isValidPhone(afterHours.forwardNumber)) {
+      showToast('Forward number looks invalid', 'error');
+    }
+  };
 
   return (
     <div className="card !p-5 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SectionHeader icon={Moon} title="After-Hours Message" subtitle="Played when calling outside business hours" />
         <button
           onClick={() => set({ enabled: !afterHours.enabled })}
@@ -1254,8 +1440,13 @@ function AfterHoursTab({ config, onUpdate }) {
             <input
               value={afterHours.forwardNumber || ''}
               onChange={(e) => set({ forwardNumber: e.target.value })}
+              onBlur={handleForwardNumberBlur}
               placeholder="+91 98765 43210"
-              className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 font-mono text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+              className={`w-full rounded-xl border bg-white px-3.5 py-2.5 font-mono text-sm outline-none focus:ring-2 ${
+                afterHours.forwardNumber && !isValidPhone(afterHours.forwardNumber)
+                  ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-400/15'
+                  : 'border-brand-lilac focus:border-brand-magenta focus:ring-brand-magenta/15'
+              }`}
             />
             <p className="mt-1 text-[10px] text-brand-ink/50">
               If set, calls will forward here instead of going to voicemail.
@@ -1288,14 +1479,25 @@ function AfterHoursTab({ config, onUpdate }) {
 /* ═══════════════════════════════════════════════════════════════
    TAB 9 — VOICEMAIL
    ═══════════════════════════════════════════════════════════════ */
-function VoicemailTab({ config, onUpdate }) {
+function VoicemailTab({ config, onUpdate, showToast }) {
   const vm = config.voicemail || {};
-
   const set = (updates) => onUpdate({ voicemail: { ...vm, ...updates } });
+
+  const setMaxDuration = (val) => {
+    const n = Number(val);
+    if (isNaN(n)) return;
+    set({ maxDuration: Math.max(10, Math.min(600, n)) });
+  };
+
+  const handleEmailBlur = () => {
+    if (vm.notifyEmail && vm.notificationEmail && !isValidEmail(vm.notificationEmail)) {
+      showToast('Please enter a valid email address', 'error');
+    }
+  };
 
   return (
     <div className="card !p-5 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <SectionHeader icon={Voicemail} title="Voicemail Configuration" subtitle="Greeting, duration, and notifications" />
         <button
           onClick={() => set({ enabled: !vm.enabled })}
@@ -1330,11 +1532,11 @@ function VoicemailTab({ config, onUpdate }) {
                 min={10}
                 max={600}
                 value={vm.maxDuration || 120}
-                onChange={(e) => set({ maxDuration: Number(e.target.value) })}
+                onChange={(e) => setMaxDuration(e.target.value)}
                 className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
               />
               <p className="mt-1 text-[10px] text-brand-ink/50">
-                Maximum recording length per message
+                Between 10 and 600 seconds. Recommended: 120s
               </p>
             </div>
             <div>
@@ -1375,9 +1577,19 @@ function VoicemailTab({ config, onUpdate }) {
                 type="email"
                 value={vm.notificationEmail || ''}
                 onChange={(e) => set({ notificationEmail: e.target.value })}
+                onBlur={handleEmailBlur}
                 placeholder="admin@example.com"
-                className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+                className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm outline-none focus:ring-2 ${
+                  vm.notificationEmail && !isValidEmail(vm.notificationEmail)
+                    ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-400/15'
+                    : 'border-brand-lilac focus:border-brand-magenta focus:ring-brand-magenta/15'
+                }`}
               />
+              {vm.notificationEmail && !isValidEmail(vm.notificationEmail) && (
+                <p className="mt-1 flex items-center gap-1 text-[10px] font-medium text-rose-500">
+                  <AlertCircle size={10} /> Please enter a valid email
+                </p>
+              )}
             </div>
           )}
 
@@ -1407,9 +1619,15 @@ function VoicemailTab({ config, onUpdate }) {
 /* ═══════════════════════════════════════════════════════════════
    TAB 10 — MISSED CALL HANDLING
    ═══════════════════════════════════════════════════════════════ */
-function MissedCallTab({ config, onUpdate }) {
+function MissedCallTab({ config, onUpdate, showToast }) {
   const mc = config.missedCallHandling || {};
   const set = (updates) => onUpdate({ missedCallHandling: { ...mc, ...updates } });
+
+  /* Count SMS characters with placeholder expansion estimate */
+  const rawLength = (mc.smsTemplate || '').length;
+  const placeholderCount = (mc.smsTemplate || '').match(/\{name\}/g)?.length || 0;
+  const estimatedLength = rawLength + placeholderCount * 8; // "John Doe" ≈ 8 chars
+  const isOverLimit = estimatedLength > 160;
 
   return (
     <div className="card !p-5 space-y-4">
@@ -1460,13 +1678,17 @@ function MissedCallTab({ config, onUpdate }) {
             onChange={(e) => set({ smsTemplate: e.target.value })}
             rows={2}
             placeholder="Hi! Sorry we missed your call. We will get back to you shortly."
-            className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+            className={`w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm outline-none focus:ring-2 ${
+              isOverLimit
+                ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-400/15'
+                : 'border-brand-lilac focus:border-brand-magenta focus:ring-brand-magenta/15'
+            }`}
           />
           <p className="mt-1 text-[10px] text-brand-ink/50">
-            Use <strong>{`{name}`}</strong> to insert the caller's name. Max 160 characters.
+            Use <strong className="text-brand-magenta">{`{name}`}</strong> to insert the caller's name.
           </p>
-          <p className="mt-1 font-mono text-[10px] text-brand-ink/40">
-            {((mc.smsTemplate || '').length)} / 160 chars
+          <p className={`mt-1 font-mono text-[10px] ${isOverLimit ? 'font-bold text-rose-500' : 'text-brand-ink/40'}`}>
+            {estimatedLength} / 160 chars {isOverLimit && '— will be split into multiple SMS'}
           </p>
         </div>
       )}
@@ -1498,7 +1720,7 @@ function SectionHeader({ icon: Icon, title, subtitle }) {
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-sm">
         <Icon size={16} />
       </span>
-      <div>
+      <div className="min-w-0">
         <h3 className="font-display text-sm font-bold text-brand-ink">{title}</h3>
         {subtitle && <p className="text-[11px] text-brand-ink/50">{subtitle}</p>}
       </div>
@@ -1545,6 +1767,36 @@ function ToggleRow({ label, desc, value, onChange, icon: Icon }) {
       >
         <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${value ? 'translate-x-5' : 'translate-x-0'}`} />
       </button>
+    </div>
+  );
+}
+
+function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-panel">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 text-rose-500">
+            <AlertCircle size={18} />
+          </div>
+          <h3 className="font-display text-base font-semibold text-brand-ink">{title}</h3>
+        </div>
+        <p className="mb-5 text-sm text-brand-ink/60">{message}</p>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 rounded-xl bg-rose-500 py-2.5 text-sm font-semibold text-white hover:bg-rose-600"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

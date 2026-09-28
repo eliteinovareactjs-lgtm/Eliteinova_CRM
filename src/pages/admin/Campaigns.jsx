@@ -9,6 +9,8 @@ import {
   PhoneOff, MessageSquare, Copy, Briefcase, Hash, Sparkles, Radio,
   ListChecks, Megaphone as MegaphoneIcon, PhoneOutgoing, PhoneIncoming,
   PhoneMissed, Circle, XCircle, ClipboardList, UserPlus, RefreshCw,
+  Grid3x3, List, MoreHorizontal, CheckSquare, Flag, TrendingUp as TrendIcon,
+  Activity, Award as AwardIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -21,12 +23,12 @@ import {
    CONSTANTS
    ═══════════════════════════════════════════════════════════════ */
 const CAMPAIGN_TYPES = [
-  { key: 'Outbound',   label: 'Outbound Calls',  icon: PhoneOutgoing },
-  { key: 'Inbound',    label: 'Inbound Follow-up', icon: PhoneIncoming },
-  { key: 'Callback',   label: 'Callback Drive',   icon: Repeat },
-  { key: 'FollowUp',   label: 'Follow-up Drive',  icon: Calendar },
-  { key: 'Feedback',   label: 'Feedback / Survey', icon: ClipboardList },
-  { key: 'Reactivation', label: 'Reactivation',   icon: Zap },
+  { key: 'Outbound',     label: 'Outbound Calls',    icon: PhoneOutgoing },
+  { key: 'Inbound',      label: 'Inbound Follow-up', icon: PhoneIncoming },
+  { key: 'Callback',     label: 'Callback Drive',    icon: Repeat },
+  { key: 'FollowUp',     label: 'Follow-up Drive',   icon: Calendar },
+  { key: 'Feedback',     label: 'Feedback / Survey', icon: ClipboardList },
+  { key: 'Reactivation', label: 'Reactivation',      icon: Zap },
 ];
 
 const STATUSES = ['Active', 'Paused', 'Completed', 'Draft'];
@@ -34,12 +36,12 @@ const STATUSES = ['Active', 'Paused', 'Completed', 'Draft'];
 const LEAD_SOURCES = ['All', 'IVR', 'Website', 'WhatsApp', 'Referral', 'Google Ads', 'Meta Ads', 'Campaign'];
 
 const LEAD_GROUPS = [
-  { key: 'all',         label: 'All Leads',        filter: () => true },
-  { key: 'fresh',       label: 'Fresh Leads',      filter: (l) => l.status === 'Fresh' },
-  { key: 'followup',    label: 'Follow-Up',        filter: (l) => l.status === 'Follow Up' },
-  { key: 'interested',  label: 'Interested',       filter: (l) => l.status === 'Qualified' },
-  { key: 'unassigned',  label: 'Unassigned',       filter: (l) => !l.assignedAgent || l.assignedAgent === 'Unassigned' },
-  { key: 'lost',        label: 'Lost',             filter: (l) => l.status === 'Lost' || l.status === 'Missed' },
+  { key: 'all',        label: 'All Leads',   filter: () => true },
+  { key: 'fresh',      label: 'Fresh Leads', filter: (l) => l.status === 'Fresh' },
+  { key: 'followup',   label: 'Follow-Up',   filter: (l) => l.status === 'Follow Up' },
+  { key: 'interested', label: 'Interested',  filter: (l) => l.status === 'Qualified' },
+  { key: 'unassigned', label: 'Unassigned',  filter: (l) => !l.assignedAgent || l.assignedAgent === 'Unassigned' },
+  { key: 'lost',       label: 'Lost',        filter: (l) => l.status === 'Lost' || l.status === 'Missed' },
 ];
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -74,6 +76,34 @@ const typeLabel = (typeKey) =>
 const typeIcon = (typeKey) =>
   CAMPAIGN_TYPES.find((t) => t.key === typeKey)?.icon || PhoneOutgoing;
 
+const groupLabel = (groupKey) =>
+  LEAD_GROUPS.find((g) => g.key === groupKey)?.label || 'All Leads';
+
+const statusTone = (status) => {
+  switch (status) {
+    case 'Active':    return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    case 'Paused':    return 'bg-amber-100 text-amber-700 border-amber-200';
+    case 'Completed': return 'bg-violet-100 text-brand-purple border-violet-200';
+    default:          return 'bg-slate-100 text-slate-600 border-slate-200';
+  }
+};
+
+/* Normalize a raw campaign into a fully-formed one */
+const buildFullCampaign = (c, websiteId) => ({
+  status: 'Draft',
+  type: 'Outbound',
+  leadSource: 'All',
+  leadGroup: 'all',
+  callTargets: 500,
+  agentIds: AGENTS.filter((a) => a.websiteId === websiteId).slice(0, 2).map((a) => a.id),
+  callingHours: { from: '09:00', to: '18:00' },
+  callingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+  retryRules: { maxAttempts: 3, intervalHours: 24, retryOnNoAnswer: true },
+  leads: 0, calls: 0, connected: 0, interested: 0, converted: 0,
+  responses: 0, followUpsGenerated: 0, noAnswer: 0, notInterested: 0,
+  ...c,
+});
+
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════ */
@@ -84,29 +114,16 @@ export default function Campaigns() {
   const [allCampaigns, setAllCampaigns] = useState(() =>
     loadState(
       `list:${activeWebsiteId}`,
-      INITIAL_CAMPAIGNS.filter((c) => c.projectId === activeWebsiteId).map((c) => ({
-        ...c,
-        status: c.status || 'Draft',
-        type: c.type || 'Outbound',
-        leadSource: c.leadSource || 'All',
-        leadGroup: c.leadGroup || 'all',
-        callTargets: c.callTargets || 500,
-        agentIds: c.agentIds || AGENTS.filter((a) => a.websiteId === activeWebsiteId).slice(0, 2).map((a) => a.id),
-        callingHours: c.callingHours || { from: '09:00', to: '18:00' },
-        callingDays: c.callingDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-        retryRules: c.retryRules || { maxAttempts: 3, intervalHours: 24, retryOnNoAnswer: true },
-        responses: c.responses || Math.round((c.connected || 0) * 0.4),
-        followUpsGenerated: c.followUpsGenerated || Math.round((c.interested || 0) * 0.6),
-        noAnswer: c.noAnswer || Math.round((c.calls || 0) * 0.25),
-        notInterested: c.notInterested || Math.round((c.calls || 0) * 0.15),
-      }))
+      INITIAL_CAMPAIGNS
+        .filter((c) => c.projectId === activeWebsiteId)
+        .map((c) => buildFullCampaign(c, activeWebsiteId))
     )
   );
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');   // stores status string
   const [statusOpen, setStatusOpen] = useState(false);
-  const [typeFilter, setTypeFilter] = useState('All');
+  const [typeFilter, setTypeFilter] = useState('All');       // ✅ stores TYPE KEY (not label)
   const [typeOpen, setTypeOpen] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [viewMode, setViewMode] = useState('grid');
@@ -122,22 +139,9 @@ export default function Campaigns() {
     setAllCampaigns(
       loadState(
         `list:${activeWebsiteId}`,
-        INITIAL_CAMPAIGNS.filter((c) => c.projectId === activeWebsiteId).map((c) => ({
-          ...c,
-          status: c.status || 'Draft',
-          type: c.type || 'Outbound',
-          leadSource: c.leadSource || 'All',
-          leadGroup: c.leadGroup || 'all',
-          callTargets: c.callTargets || 500,
-          agentIds: c.agentIds || AGENTS.filter((a) => a.websiteId === activeWebsiteId).slice(0, 2).map((a) => a.id),
-          callingHours: c.callingHours || { from: '09:00', to: '18:00' },
-          callingDays: c.callingDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-          retryRules: c.retryRules || { maxAttempts: 3, intervalHours: 24, retryOnNoAnswer: true },
-          responses: c.responses || Math.round((c.connected || 0) * 0.4),
-          followUpsGenerated: c.followUpsGenerated || Math.round((c.interested || 0) * 0.6),
-          noAnswer: c.noAnswer || Math.round((c.calls || 0) * 0.25),
-          notInterested: c.notInterested || Math.round((c.calls || 0) * 0.15),
-        }))
+        INITIAL_CAMPAIGNS
+          .filter((c) => c.projectId === activeWebsiteId)
+          .map((c) => buildFullCampaign(c, activeWebsiteId))
       )
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,28 +166,36 @@ export default function Campaigns() {
     [activeWebsiteId]
   );
 
-  const agentName = (id) => AGENTS.find((a) => a.id === id)?.name || 'Agent';
+  /* ✅ FIXED: uses filtered agents, not global AGENTS */
+  const agentName = (id) =>
+    agents.find((a) => a.id === id)?.name ||
+    AGENTS.find((a) => a.id === id)?.name ||
+    'Unknown Agent';
 
   /* ── Filtered campaigns ── */
   const filtered = useMemo(() => {
     let rows = [...allCampaigns];
     if (statusFilter !== 'All') rows = rows.filter((c) => c.status === statusFilter);
-    if (typeFilter !== 'All') rows = rows.filter((c) => c.type === typeFilter);
+    if (typeFilter !== 'All') rows = rows.filter((c) => c.type === typeFilter); // ✅ compares KEY
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       rows = rows.filter((c) =>
-        `${c.name} ${c.leadSource} ${c.status} ${typeLabel(c.type)}`.toLowerCase().includes(q)
+        `${c.name} ${c.leadSource} ${c.status} ${typeLabel(c.type)} ${groupLabel(c.leadGroup)}`
+          .toLowerCase()
+          .includes(q)
       );
     }
     return rows;
   }, [allCampaigns, statusFilter, typeFilter, searchQuery]);
 
-  /* ── Summary ── */
+  /* ── Summary (filtered — label says "of shown") ── */
   const summary = useMemo(() => {
     const total = filtered.length;
     const active = filtered.filter((c) => c.status === 'Active').length;
     const paused = filtered.filter((c) => c.status === 'Paused').length;
     const completed = filtered.filter((c) => c.status === 'Completed').length;
+    const draft = filtered.filter((c) => c.status === 'Draft').length;
+
     const totalLeads = filtered.reduce((s, c) => s + (c.leads || 0), 0);
     const totalCalls = filtered.reduce((s, c) => s + (c.calls || 0), 0);
     const totalConnected = filtered.reduce((s, c) => s + (c.connected || 0), 0);
@@ -194,23 +206,27 @@ export default function Campaigns() {
     const totalFollowUps = filtered.reduce((s, c) => s + (c.followUpsGenerated || 0), 0);
     const totalTargets = filtered.reduce((s, c) => s + (c.callTargets || 0), 0);
     const conversion = totalLeads > 0 ? Math.round((totalConverted / totalLeads) * 100) : 0;
+    const connectionRate = totalCalls > 0 ? Math.round((totalConnected / totalCalls) * 100) : 0;
+    const targetProgress = totalTargets > 0 ? Math.round((totalCalls / totalTargets) * 100) : 0;
+
     return {
-      total, active, paused, completed,
+      total, active, paused, completed, draft,
       totalLeads, totalCalls, totalConnected, totalInterested,
       totalConverted, totalNoAnswer, totalNotInterested, totalFollowUps,
-      totalTargets, conversion,
+      totalTargets, conversion, connectionRate, targetProgress,
     };
   }, [filtered]);
 
   /* ── CRUD ── */
   const handleCreate = (data) => {
-    const newCampaign = {
-      id: 'CMP-' + String(Date.now()).slice(-5),
-      projectId: activeWebsiteId,
-      leads: 0, calls: 0, connected: 0, interested: 0, converted: 0,
-      responses: 0, followUpsGenerated: 0, noAnswer: 0, notInterested: 0,
-      ...data,
-    };
+    const newCampaign = buildFullCampaign(
+      {
+        id: 'CMP-' + String(Date.now()).slice(-5),
+        projectId: activeWebsiteId,
+        ...data,
+      },
+      activeWebsiteId
+    );
     setAllCampaigns((prev) => [newCampaign, ...prev]);
     setShowCreateModal(false);
     showToast(`Campaign "${data.name}" created`);
@@ -229,11 +245,26 @@ export default function Campaigns() {
     showToast('Campaign deleted', 'error');
   };
 
+  /* ✅ FIXED: prevent starting Draft campaigns */
   const handleToggleStatus = (id, currentStatus) => {
+    if (currentStatus === 'Completed') {
+      showToast('Completed campaigns cannot be restarted. Duplicate to create a new one.', 'error');
+      setMenuOpenId(null);
+      return;
+    }
     const newStatus = currentStatus === 'Active' ? 'Paused' : 'Active';
     setAllCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)));
     setMenuOpenId(null);
-    showToast(newStatus === 'Active' ? 'Campaign resumed' : 'Campaign paused', newStatus === 'Active' ? 'success' : 'error');
+    showToast(
+      newStatus === 'Active' ? 'Campaign resumed' : 'Campaign paused',
+      newStatus === 'Active' ? 'success' : 'error'
+    );
+  };
+
+  const handleComplete = (id) => {
+    setAllCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'Completed' } : c)));
+    setMenuOpenId(null);
+    showToast('Campaign marked as completed');
   };
 
   const handleDuplicate = (campaign) => {
@@ -255,10 +286,11 @@ export default function Campaigns() {
       showToast('No campaigns to export', 'error');
       return;
     }
+    /* ✅ FIXED: exports labels for type/group, not raw keys */
     const rows = [
       ['ID', 'Name', 'Type', 'Status', 'Lead Source', 'Lead Group', 'Leads', 'Calls', 'Connected', 'No Answer', 'Interested', 'Not Interested', 'Follow-ups', 'Converted', 'Start', 'End'],
       ...filtered.map((c) => [
-        c.id, c.name, typeLabel(c.type), c.status, c.leadSource, c.leadGroup,
+        c.id, c.name, typeLabel(c.type), c.status, c.leadSource, groupLabel(c.leadGroup),
         c.leads, c.calls, c.connected, c.noAnswer, c.interested, c.notInterested,
         c.followUpsGenerated, c.converted, c.startDate, c.endDate,
       ]),
@@ -327,7 +359,7 @@ export default function Campaigns() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             <KpiCard icon={Megaphone}   label="Total Campaigns" value={summary.total}        sub={`${summary.active} active · ${summary.paused} paused`} color="purple"  delay={0} />
             <KpiCard icon={Users}       label="Total Leads"     value={summary.totalLeads}   sub={`${summary.totalCalls} calls made`}                    color="emerald" delay={40} />
             <KpiCard icon={Target}      label="Converted"       value={summary.totalConverted} sub={`${summary.conversion}% conversion rate`}             color="amber"   delay={80} />
@@ -335,7 +367,7 @@ export default function Campaigns() {
           </div>
         </div>
 
-        {/* ═══ SECONDARY KPI STRIP (Monitoring) ═══ */}
+        {/* ═══ SECONDARY KPI STRIP ═══ */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -348,12 +380,12 @@ export default function Campaigns() {
           </div>
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <MiniStat icon={CheckCircle2}  label="Successful"    value={summary.totalConnected}     color="emerald" />
-            <MiniStat icon={PhoneOff}      label="No Answer"     value={summary.totalNoAnswer}      color="rose" />
-            <MiniStat icon={Star}          label="Interested"    value={summary.totalInterested}    color="amber" />
-            <MiniStat icon={XCircle}       label="Not Interested" value={summary.totalNotInterested} color="rose" />
-            <MiniStat icon={Layers}        label="Follow-ups"    value={summary.totalFollowUps}     color="purple" />
-            <MiniStat icon={Target}        label="Converted"     value={summary.totalConverted}     color="emerald" />
+            <MiniStat icon={CheckCircle2} label="Successful"     value={summary.totalConnected}     color="emerald" sub={`${summary.connectionRate}% rate`} />
+            <MiniStat icon={PhoneOff}     label="No Answer"      value={summary.totalNoAnswer}      color="rose" />
+            <MiniStat icon={Star}         label="Interested"     value={summary.totalInterested}    color="amber" />
+            <MiniStat icon={XCircle}      label="Not Interested" value={summary.totalNotInterested} color="rose" />
+            <MiniStat icon={Layers}       label="Follow-ups"     value={summary.totalFollowUps}     color="purple" />
+            <MiniStat icon={Target}       label="Converted"      value={summary.totalConverted}     color="emerald" />
           </div>
         </div>
 
@@ -387,12 +419,13 @@ export default function Campaigns() {
             onChange={(v) => { setStatusFilter(v); setStatusOpen(false); }}
           />
 
+          {/* ✅ FIXED: options are KEYS, display is LABELS */}
           <DropdownFilter
             label="Type"
             icon={MegaphoneIcon}
             value={typeFilter}
-            options={['All', ...CAMPAIGN_TYPES.map((t) => t.label)]}
-            displayOptions={['All', ...CAMPAIGN_TYPES.map((t) => t.label)]}
+            options={['All', ...CAMPAIGN_TYPES.map((t) => t.key)]}
+            displayValue={(v) => (v === 'All' ? 'All' : typeLabel(v))}
             open={typeOpen}
             onToggle={() => { setTypeOpen((s) => !s); setStatusOpen(false); }}
             onChange={(v) => { setTypeFilter(v); setTypeOpen(false); }}
@@ -413,14 +446,14 @@ export default function Campaigns() {
               className={`rounded-full p-1.5 transition-all ${viewMode === 'grid' ? 'bg-brand-magenta/10 text-brand-magenta' : 'text-brand-ink/50 hover:bg-brand-lilac/30'}`}
               title="Grid view"
             >
-              <Layers size={14} />
+              <Grid3x3 size={14} />
             </button>
             <button
               onClick={() => setViewMode('list')}
               className={`rounded-full p-1.5 transition-all ${viewMode === 'list' ? 'bg-brand-magenta/10 text-brand-magenta' : 'text-brand-ink/50 hover:bg-brand-lilac/30'}`}
               title="List view"
             >
-              <ListChecks size={14} />
+              <List size={14} />
             </button>
           </div>
         </div>
@@ -446,6 +479,7 @@ export default function Campaigns() {
                 menuOpenId={menuOpenId}
                 setMenuOpenId={setMenuOpenId}
                 onDuplicate={() => handleDuplicate(c)}
+                onComplete={() => handleComplete(c.id)}
                 onDelete={() => { setConfirmDelete(c); setMenuOpenId(null); }}
               />
             ))}
@@ -464,6 +498,7 @@ export default function Campaigns() {
                 menuOpenId={menuOpenId}
                 setMenuOpenId={setMenuOpenId}
                 onDuplicate={() => handleDuplicate(c)}
+                onComplete={() => handleComplete(c.id)}
                 onDelete={() => { setConfirmDelete(c); setMenuOpenId(null); }}
               />
             ))}
@@ -512,8 +547,8 @@ export default function Campaigns() {
 
         {confirmDelete && (
           <ConfirmDialog
-            title="Delete campaign?"
-            message={`This will permanently delete "${confirmDelete.name}" and all its data. This action cannot be undone.`}
+            title={`Delete "${confirmDelete.name}"?`}
+            message="This will permanently delete this campaign and all its data. This action cannot be undone."
             confirmLabel="Delete Campaign"
             onCancel={() => setConfirmDelete(null)}
             onConfirm={() => handleDelete(confirmDelete.id)}
@@ -537,7 +572,7 @@ function KpiCard({ icon: Icon, label, value, sub, color = 'purple', delay = 0 })
     amber:   { border: 'border-amber-200 hover:border-amber-400', bg: 'from-amber-50 via-amber-50/30 to-white', iconBg: 'bg-amber-100 text-amber-600 border-amber-200', bar: 'from-amber-500 to-orange-400', glow: 'bg-amber-500/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(245,158,11,0.4)]', valueColor: 'text-amber-600' },
     rose:    { border: 'border-rose-200 hover:border-rose-400', bg: 'from-rose-50 via-rose-50/30 to-white', iconBg: 'bg-rose-100 text-brand-magenta border-rose-200', bar: 'from-brand-magenta to-brand-purple', glow: 'bg-brand-magenta/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(227,28,121,0.45)]', valueColor: 'text-brand-magenta' },
   };
-  const t = themes[color];
+  const t = themes[color] || themes.purple;
 
   return (
     <div
@@ -590,7 +625,7 @@ function useAnimatedCount(target, duration = 600) {
 /* ═══════════════════════════════════════════════════════════════
    MINI STAT
    ═══════════════════════════════════════════════════════════════ */
-function MiniStat({ icon: Icon, label, value, color = 'purple' }) {
+function MiniStat({ icon: Icon, label, value, color = 'purple', sub }) {
   const colors = {
     purple:  'bg-violet-50 text-brand-purple',
     emerald: 'bg-emerald-50 text-emerald-600',
@@ -598,8 +633,8 @@ function MiniStat({ icon: Icon, label, value, color = 'purple' }) {
     rose:    'bg-rose-50 text-brand-magenta',
   };
   return (
-    <div className={`flex items-center gap-3 rounded-xl border border-brand-lilac bg-white p-3 transition-all hover:-translate-y-0.5 hover:shadow-md`}>
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${colors[color]}`}>
+    <div className="flex items-center gap-3 rounded-xl border border-brand-lilac bg-white p-3 transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${colors[color] || colors.purple}`}>
         <Icon size={18} />
       </span>
       <div className="min-w-0">
@@ -607,15 +642,17 @@ function MiniStat({ icon: Icon, label, value, color = 'purple' }) {
         <p className="font-display text-lg font-bold text-brand-ink tabular-nums">
           {typeof value === 'number' ? value.toLocaleString() : value}
         </p>
+        {sub && <p className="font-mono text-[9px] uppercase tracking-wider text-brand-ink/40">{sub}</p>}
       </div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   DROPDOWN FILTER
+   DROPDOWN FILTER (supports key → label display)
    ═══════════════════════════════════════════════════════════════ */
-function DropdownFilter({ label, icon: Icon, value, options, displayOptions, open, onToggle, onChange }) {
+function DropdownFilter({ label, icon: Icon, value, options, displayValue, open, onToggle, onChange }) {
+  const render = (v) => (displayValue ? displayValue(v) : v);
   return (
     <div className="relative">
       <button
@@ -623,14 +660,14 @@ function DropdownFilter({ label, icon: Icon, value, options, displayOptions, ope
         className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-4 py-2.5 text-sm font-medium text-brand-ink hover:bg-brand-lilac/40"
       >
         {Icon && <Icon size={14} className="text-brand-magenta" />}
-        {label}: <span className="font-semibold text-brand-magenta">{value}</span>
+        {label}: <span className="font-semibold text-brand-magenta">{render(value)}</span>
         <ChevronDown size={14} className={`text-brand-ink/40 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={onToggle} />
           <div className="absolute right-0 top-full z-20 mt-2 max-h-72 w-56 overflow-y-auto rounded-xl border border-brand-lilac bg-white p-1 shadow-panel">
-            {options.map((o, i) => (
+            {options.map((o) => (
               <button
                 key={o}
                 onClick={() => onChange(o)}
@@ -640,7 +677,7 @@ function DropdownFilter({ label, icon: Icon, value, options, displayOptions, ope
                     : 'text-brand-ink/70 hover:bg-brand-lilac/40'
                 }`}
               >
-                {displayOptions ? displayOptions[i] : o}
+                {render(o)}
               </button>
             ))}
           </div>
@@ -653,11 +690,14 @@ function DropdownFilter({ label, icon: Icon, value, options, displayOptions, ope
 /* ═══════════════════════════════════════════════════════════════
    CAMPAIGN CARD
    ═══════════════════════════════════════════════════════════════ */
-function CampaignCard({ campaign: c, agentName, onView, onEdit, onToggle, onMonitoring, menuOpenId, setMenuOpenId, onDuplicate, onDelete }) {
+function CampaignCard({ campaign: c, agentName, onView, onEdit, onToggle, onMonitoring, menuOpenId, setMenuOpenId, onDuplicate, onComplete, onDelete }) {
   const conversionRate = c.leads > 0 ? Math.round((c.converted / c.leads) * 100) : 0;
   const connectionRate = c.calls > 0 ? Math.round((c.connected / c.calls) * 100) : 0;
   const targetProgress = c.callTargets > 0 ? Math.round((c.calls / c.callTargets) * 100) : 0;
   const TypeIcon = typeIcon(c.type);
+
+  const isCompleted = c.status === 'Completed';
+  const isActive = c.status === 'Active';
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border-2 border-brand-lilac/80 bg-white shadow-sm transition-all duration-500 hover:-translate-y-1.5 hover:border-brand-magenta/50 hover:shadow-[0_20px_45px_-15px_rgba(227,28,121,0.25)]">
@@ -676,12 +716,7 @@ function CampaignCard({ campaign: c, agentName, onView, onEdit, onToggle, onMoni
               {typeLabel(c.type)}
             </p>
           </div>
-          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-            c.status === 'Active' ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-            : c.status === 'Paused' ? 'bg-amber-100 text-amber-700 border-amber-200'
-            : c.status === 'Completed' ? 'bg-violet-100 text-brand-purple border-violet-200'
-            : 'bg-slate-100 text-slate-600 border-slate-200'
-          }`}>
+          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${statusTone(c.status)}`}>
             {c.status}
           </span>
           <div className="relative">
@@ -695,13 +730,24 @@ function CampaignCard({ campaign: c, agentName, onView, onEdit, onToggle, onMoni
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
                 <div className="absolute right-0 top-full z-20 mt-2 w-52 overflow-hidden rounded-xl border border-brand-lilac bg-white p-1 shadow-panel">
-                  <MenuItem icon={Eye}            label="View Details"     onClick={onView} />
-                  <MenuItem icon={Pencil}         label="Edit Campaign"    onClick={onEdit} />
-                  <MenuItem icon={BarChart3}      label="Monitoring"       onClick={onMonitoring} />
-                  <MenuItem icon={Copy}           label="Duplicate"        onClick={onDuplicate} />
-                  <MenuItem icon={c.status === 'Active' ? Pause : Play} label={c.status === 'Active' ? 'Pause' : 'Resume'} onClick={onToggle} />
+                  <MenuItem icon={Eye}       label="View Details"  onClick={onView} />
+                  <MenuItem icon={Pencil}    label="Edit Campaign" onClick={onEdit} />
+                  <MenuItem icon={BarChart3} label="Monitoring"    onClick={onMonitoring} />
+                  <MenuItem icon={Copy}      label="Duplicate"     onClick={onDuplicate} />
+                  {!isCompleted && (
+                    <>
+                      <MenuItem
+                        icon={isActive ? Pause : Play}
+                        label={isActive ? 'Pause' : 'Start'}
+                        onClick={onToggle}
+                      />
+                      {isActive && (
+                        <MenuItem icon={CheckSquare} label="Mark Complete" onClick={onComplete} />
+                      )}
+                    </>
+                  )}
                   <div className="my-1 h-px bg-brand-lilac/60" />
-                  <MenuItem icon={Trash2}         label="Delete"           danger onClick={onDelete} />
+                  <MenuItem icon={Trash2}    label="Delete"        danger onClick={onDelete} />
                 </div>
               </>
             )}
@@ -712,7 +758,7 @@ function CampaignCard({ campaign: c, agentName, onView, onEdit, onToggle, onMoni
         <div className="mt-4 space-y-2 rounded-xl border border-brand-lilac/60 bg-gradient-to-br from-brand-mist/80 to-brand-mist/40 p-3 text-xs">
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-brand-ink/50"><Calendar size={11} /> Duration</span>
-            <span className="truncate font-semibold text-brand-ink">{c.startDate} → {c.endDate}</span>
+            <span className="truncate font-semibold text-brand-ink">{c.startDate} → {c.endDate || '—'}</span>
           </div>
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-brand-ink/50"><Clock size={11} /> Hours</span>
@@ -758,13 +804,16 @@ function CampaignCard({ campaign: c, agentName, onView, onEdit, onToggle, onMoni
           </button>
           <button
             onClick={onToggle}
-            className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold text-white shadow-card transition-all hover:brightness-110 ${
-              c.status === 'Active'
+            disabled={isCompleted}
+            className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold text-white shadow-card transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 ${
+              isActive
                 ? 'bg-gradient-to-r from-amber-500 to-amber-600'
+                : isCompleted
+                ? 'bg-gradient-to-r from-slate-400 to-slate-500'
                 : 'bg-gradient-to-r from-brand-magenta to-brand-purple'
             }`}
           >
-            {c.status === 'Active' ? <><Pause size={12} /> Pause</> : <><Play size={12} /> Start</>}
+            {isActive ? <><Pause size={12} /> Pause</> : isCompleted ? <><Check size={12} /> Done</> : <><Play size={12} /> Start</>}
           </button>
         </div>
       </div>
@@ -775,9 +824,11 @@ function CampaignCard({ campaign: c, agentName, onView, onEdit, onToggle, onMoni
 /* ═══════════════════════════════════════════════════════════════
    CAMPAIGN ROW (LIST)
    ═══════════════════════════════════════════════════════════════ */
-function CampaignRow({ campaign: c, agentName, onView, onEdit, onToggle, onMonitoring, menuOpenId, setMenuOpenId, onDuplicate, onDelete }) {
+function CampaignRow({ campaign: c, agentName, onView, onEdit, onToggle, onMonitoring, menuOpenId, setMenuOpenId, onDuplicate, onComplete, onDelete }) {
   const conversionRate = c.leads > 0 ? Math.round((c.converted / c.leads) * 100) : 0;
   const TypeIcon = typeIcon(c.type);
+  const isCompleted = c.status === 'Completed';
+  const isActive = c.status === 'Active';
 
   return (
     <div className="group flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border-2 border-brand-lilac/70 bg-white px-3 py-3 transition-all hover:shadow-md sm:flex-nowrap sm:gap-4 sm:px-4">
@@ -807,12 +858,7 @@ function CampaignRow({ campaign: c, agentName, onView, onEdit, onToggle, onMonit
         <p className="font-semibold tabular-nums text-emerald-600">{conversionRate}%</p>
       </div>
 
-      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-        c.status === 'Active' ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-        : c.status === 'Paused' ? 'bg-amber-100 text-amber-700 border-amber-200'
-        : c.status === 'Completed' ? 'bg-violet-100 text-brand-purple border-violet-200'
-        : 'bg-slate-100 text-slate-600 border-slate-200'
-      }`}>
+      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${statusTone(c.status)}`}>
         {c.status}
       </span>
 
@@ -833,11 +879,16 @@ function CampaignRow({ campaign: c, agentName, onView, onEdit, onToggle, onMonit
         </button>
         <button
           onClick={onToggle}
-          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-white shadow-card hover:brightness-110 ${
-            c.status === 'Active' ? 'bg-gradient-to-r from-amber-500 to-amber-600' : 'bg-gradient-to-r from-brand-magenta to-brand-purple'
+          disabled={isCompleted}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-white shadow-card hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 ${
+            isActive
+              ? 'bg-gradient-to-r from-amber-500 to-amber-600'
+              : isCompleted
+              ? 'bg-gradient-to-r from-slate-400 to-slate-500'
+              : 'bg-gradient-to-r from-brand-magenta to-brand-purple'
           }`}
         >
-          {c.status === 'Active' ? <><Pause size={11} /> Pause</> : <><Play size={11} /> Start</>}
+          {isActive ? <><Pause size={11} /> Pause</> : isCompleted ? <><Check size={11} /> Done</> : <><Play size={11} /> Start</>}
         </button>
 
         <div className="relative">
@@ -853,6 +904,7 @@ function CampaignRow({ campaign: c, agentName, onView, onEdit, onToggle, onMonit
               <div className="absolute right-0 top-full z-20 mt-2 w-52 overflow-hidden rounded-xl border border-brand-lilac bg-white p-1 shadow-panel">
                 <MenuItem icon={Pencil}  label="Edit Campaign" onClick={onEdit} />
                 <MenuItem icon={Copy}    label="Duplicate"     onClick={onDuplicate} />
+                {isActive && <MenuItem icon={CheckSquare} label="Mark Complete" onClick={onComplete} />}
                 <div className="my-1 h-px bg-brand-lilac/60" />
                 <MenuItem icon={Trash2}  label="Delete"        danger onClick={onDelete} />
               </div>
@@ -888,9 +940,10 @@ function MiniBox({ label, value, tone = 'purple' }) {
     purple:  'bg-violet-50 text-brand-purple border-violet-100',
     emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100',
     rose:    'bg-rose-50 text-brand-magenta border-rose-100',
+    amber:   'bg-amber-50 text-amber-600 border-amber-100',
   };
   return (
-    <div className={`rounded-xl border ${tones[tone]} p-2.5`}>
+    <div className={`rounded-xl border ${tones[tone] || tones.purple} p-2.5`}>
       <p className="font-display text-base font-bold tabular-nums">
         {typeof value === 'number' ? value.toLocaleString() : value}
       </p>
@@ -904,22 +957,22 @@ function MiniBox({ label, value, tone = 'purple' }) {
    ═══════════════════════════════════════════════════════════════ */
 function ProgressBar({ label, value, tone = 'purple' }) {
   const tones = {
-    purple:  'from-brand-purple to-brand-magenta text-brand-purple',
-    emerald: 'from-emerald-500 to-emerald-400 text-emerald-600',
-    amber:   'from-amber-500 to-orange-400 text-amber-600',
-    rose:    'from-brand-magenta to-brand-purple text-brand-magenta',
+    purple:  { bar: 'from-brand-purple to-brand-magenta', text: 'text-brand-purple' },
+    emerald: { bar: 'from-emerald-500 to-emerald-400',     text: 'text-emerald-600' },
+    amber:   { bar: 'from-amber-500 to-orange-400',        text: 'text-amber-600' },
+    rose:    { bar: 'from-brand-magenta to-brand-purple',  text: 'text-brand-magenta' },
   };
-  const t = tones[tone];
+  const t = tones[tone] || tones.purple;
   return (
     <div>
       <div className="mb-1 flex items-center justify-between text-[10px]">
         <span className="font-mono uppercase tracking-wider text-brand-ink/50">{label}</span>
-        <span className={`font-semibold tabular-nums ${t.split(' ').pop()}`}>{value}%</span>
+        <span className={`font-semibold tabular-nums ${t.text}`}>{value}%</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-brand-lilac">
         <div
-          className={`h-full rounded-full bg-gradient-to-r ${t.split(' ').slice(0, 2).join(' ')} transition-all duration-1000`}
-          style={{ width: `${Math.min(value, 100)}%` }}
+          className={`h-full rounded-full bg-gradient-to-r ${t.bar} transition-all duration-1000`}
+          style={{ width: `${Math.min(Math.max(value, 0), 100)}%` }}
         />
       </div>
     </div>
@@ -948,6 +1001,12 @@ function CampaignModal({ mode = 'create', initial = {}, agents, websiteLeads, on
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  /* Filter agents who actually exist in the current website */
+  const availableAgents = useMemo(
+    () => agents.filter((a) => !initial.agentIds || true), // all agents
+    [agents]
+  );
+
   /* Preview leads count */
   const previewLeads = useMemo(() => {
     const groupFilter = LEAD_GROUPS.find((g) => g.key === form.leadGroup)?.filter || (() => true);
@@ -964,7 +1023,10 @@ function CampaignModal({ mode = 'create', initial = {}, agents, websiteLeads, on
     if (form.endDate < form.startDate) return 'End date must be after start date.';
     if (form.agentIds.length === 0) return 'Select at least one agent.';
     if (form.callingDays.length === 0) return 'Select at least one day.';
-    if (form.callTargets <= 0) return 'Call targets must be greater than 0.';
+    if (Number(form.callTargets) <= 0) return 'Call targets must be greater than 0.';
+    if (form.retryRules.maxAttempts < 1) return 'Retry attempts must be at least 1.';
+    if (form.retryRules.intervalHours < 1) return 'Retry interval must be at least 1 hour.';
+    if (form.callingHours.from >= form.callingHours.to) return 'Calling hours "from" must be before "to".';
     return null;
   };
 
@@ -999,6 +1061,14 @@ function CampaignModal({ mode = 'create', initial = {}, agents, websiteLeads, on
 
   const toggleDay = (day) => {
     setForm((f) => ({ ...f, callingDays: f.callingDays.includes(day) ? f.callingDays.filter((d) => d !== day) : [...f.callingDays, day] }));
+  };
+
+  /* Clamp helpers */
+  const setNumeric = (field, value, min = 1, max = 1000) => {
+    const n = Number(value);
+    if (isNaN(n)) return;
+    const clamped = Math.max(min, Math.min(max, n));
+    setForm((f) => ({ ...f, [field]: clamped }));
   };
 
   return (
@@ -1093,7 +1163,7 @@ function CampaignModal({ mode = 'create', initial = {}, agents, websiteLeads, on
               label="Total Call Target"
               type="number"
               value={form.callTargets}
-              onChange={(v) => setForm({ ...form, callTargets: v })}
+              onChange={(v) => setNumeric('callTargets', v, 1, 100000)}
               placeholder="e.g. 500"
               icon={Target}
               required
@@ -1200,18 +1270,28 @@ function CampaignModal({ mode = 'create', initial = {}, agents, websiteLeads, on
               <input
                 type="number" min={1} max={10}
                 value={form.retryRules.maxAttempts}
-                onChange={(e) => setForm({ ...form, retryRules: { ...form.retryRules, maxAttempts: Number(e.target.value) } })}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (isNaN(n)) return;
+                  setForm({ ...form, retryRules: { ...form.retryRules, maxAttempts: Math.max(1, Math.min(10, n)) } });
+                }}
                 className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
               />
+              <p className="mt-1 text-[10px] text-brand-ink/50">Between 1 and 10</p>
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Interval (hours)</label>
               <input
-                type="number" min={1}
+                type="number" min={1} max={168}
                 value={form.retryRules.intervalHours}
-                onChange={(e) => setForm({ ...form, retryRules: { ...form.retryRules, intervalHours: Number(e.target.value) } })}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (isNaN(n)) return;
+                  setForm({ ...form, retryRules: { ...form.retryRules, intervalHours: Math.max(1, Math.min(168, n)) } });
+                }}
                 className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
               />
+              <p className="mt-1 text-[10px] text-brand-ink/50">Between 1 and 168 hours</p>
             </div>
           </div>
 
@@ -1275,7 +1355,7 @@ function SectionTitle({ icon: Icon, label }) {
   return (
     <div className="flex items-center gap-2 border-b border-brand-lilac/60 pb-1.5">
       <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta/10 to-brand-purple/10 text-brand-magenta">
-        <Icon size={12} />
+        {Icon ? <Icon size={12} /> : null}
       </span>
       <h4 className="font-mono text-[10px] font-bold uppercase tracking-wider text-brand-ink/60">{label}</h4>
     </div>
@@ -1312,7 +1392,6 @@ function CampaignDetailsDrawer({ campaign: c, agentName, onClose, onEdit, onMoni
   const connectionRate = c.calls > 0 ? Math.round((c.connected / c.calls) * 100) : 0;
   const targetProgress = c.callTargets > 0 ? Math.round((c.calls / c.callTargets) * 100) : 0;
   const TypeIcon = typeIcon(c.type);
-  const groupLabel = LEAD_GROUPS.find((g) => g.key === c.leadGroup)?.label || 'All Leads';
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm">
@@ -1334,12 +1413,11 @@ function CampaignDetailsDrawer({ campaign: c, agentName, onClose, onEdit, onMoni
 
         <div className="space-y-5 p-5">
           <div className="grid grid-cols-3 gap-3">
-            <InfoBox label="Status"    value={c.status}              color={c.status === 'Active' ? 'emerald' : c.status === 'Paused' ? 'amber' : 'purple'} />
-            <InfoBox label="Leads"     value={c.leads}               color="purple" />
-            <InfoBox label="Calls"     value={c.calls}               color="emerald" />
+            <InfoBox label="Status" value={c.status} color={c.status === 'Active' ? 'emerald' : c.status === 'Paused' ? 'amber' : 'purple'} />
+            <InfoBox label="Leads"  value={c.leads}  color="purple" />
+            <InfoBox label="Calls"  value={c.calls}  color="emerald" />
           </div>
 
-          {/* Targets progress */}
           <div className="card !p-4">
             <div className="mb-3 flex items-center justify-between">
               <div>
@@ -1360,23 +1438,20 @@ function CampaignDetailsDrawer({ campaign: c, agentName, onClose, onEdit, onMoni
             </div>
           </div>
 
-          {/* Lead selection */}
           <div className="card !p-4 space-y-3">
             <h4 className="font-display text-sm font-semibold text-brand-ink">Lead Selection</h4>
             <InfoRow icon={Filter} label="Source" value={c.leadSource} />
-            <InfoRow icon={Users}  label="Group"  value={groupLabel} />
+            <InfoRow icon={Users}  label="Group"  value={groupLabel(c.leadGroup)} />
           </div>
 
-          {/* Schedule */}
           <div className="card !p-4 space-y-3">
             <h4 className="font-display text-sm font-semibold text-brand-ink">Schedule</h4>
             <InfoRow icon={Calendar} label="Start Date"    value={c.startDate} />
-            <InfoRow icon={Calendar} label="End Date"      value={c.endDate} />
+            <InfoRow icon={Calendar} label="End Date"      value={c.endDate || '—'} />
             <InfoRow icon={Clock}    label="Calling Hours" value={`${c.callingHours?.from} – ${c.callingHours?.to}`} />
             <InfoRow icon={Calendar} label="Calling Days"  value={c.callingDays?.join(', ') || '—'} />
           </div>
 
-          {/* Agents */}
           <div className="card !p-4 space-y-3">
             <h4 className="font-display text-sm font-semibold text-brand-ink">Assigned Agents ({c.agentIds?.length || 0})</h4>
             {c.agentIds?.length === 0 ? (
@@ -1398,15 +1473,13 @@ function CampaignDetailsDrawer({ campaign: c, agentName, onClose, onEdit, onMoni
             )}
           </div>
 
-          {/* Retry Rules */}
           <div className="card !p-4 space-y-3">
             <h4 className="font-display text-sm font-semibold text-brand-ink">Retry Rules</h4>
-            <InfoRow icon={Repeat}    label="Max Attempts"   value={c.retryRules?.maxAttempts || 0} />
-            <InfoRow icon={Timer}     label="Interval"       value={`${c.retryRules?.intervalHours || 0} hours`} />
-            <InfoRow icon={RefreshCw} label="Retry No-Ans"   value={c.retryRules?.retryOnNoAnswer ? 'Yes' : 'No'} />
+            <InfoRow icon={Repeat}    label="Max Attempts"  value={c.retryRules?.maxAttempts || 0} />
+            <InfoRow icon={Timer}     label="Interval"      value={`${c.retryRules?.intervalHours || 0} hours`} />
+            <InfoRow icon={RefreshCw} label="Retry No-Ans"  value={c.retryRules?.retryOnNoAnswer ? 'Yes' : 'No'} />
           </div>
 
-          {/* Performance snapshot */}
           <div className="card !p-4">
             <h4 className="mb-3 font-display text-sm font-semibold text-brand-ink">Performance Snapshot</h4>
             <div className="grid grid-cols-2 gap-3">
@@ -1415,7 +1488,6 @@ function CampaignDetailsDrawer({ campaign: c, agentName, onClose, onEdit, onMoni
             </div>
           </div>
 
-          {/* Actions */}
           <div className="grid grid-cols-3 gap-2">
             <button onClick={onEdit} className="flex items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white py-2.5 text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40">
               <Pencil size={13} /> Edit
@@ -1425,7 +1497,8 @@ function CampaignDetailsDrawer({ campaign: c, agentName, onClose, onEdit, onMoni
             </button>
             <button
               onClick={onToggle}
-              className={`flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold text-white shadow-card hover:brightness-110 ${
+              disabled={c.status === 'Completed'}
+              className={`flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold text-white shadow-card hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 ${
                 c.status === 'Active' ? 'bg-gradient-to-r from-amber-500 to-amber-600' : 'bg-gradient-to-r from-brand-magenta to-brand-purple'
               }`}
             >
@@ -1439,25 +1512,27 @@ function CampaignDetailsDrawer({ campaign: c, agentName, onClose, onEdit, onMoni
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   CAMPAIGN MONITORING DRAWER (FULL TRACKING)
+   CAMPAIGN MONITORING DRAWER
    ═══════════════════════════════════════════════════════════════ */
 function CampaignMonitoringDrawer({ campaign: c, onClose }) {
-  const TypeIcon = typeIcon(c.type);
   const conversionRate = c.leads > 0 ? Math.round((c.converted / c.leads) * 100) : 0;
   const connectionRate = c.calls > 0 ? Math.round((c.connected / c.calls) * 100) : 0;
-  const targetProgress  = c.callTargets > 0 ? Math.round((c.calls / c.callTargets) * 100) : 0;
-  const noAnswerRate    = c.calls > 0 ? Math.round((c.noAnswer / c.calls) * 100) : 0;
+  const targetProgress = c.callTargets > 0 ? Math.round((c.calls / c.callTargets) * 100) : 0;
+  const noAnswerRate   = c.calls > 0 ? Math.round((c.noAnswer / c.calls) * 100) : 0;
 
   const funnel = [
-    { label: 'Target Leads',     value: c.leads,             tone: 'purple' },
-    { label: 'Calls Made',       value: c.calls,             tone: 'purple' },
-    { label: 'Connected',        value: c.connected,         tone: 'emerald' },
-    { label: 'No Answer',        value: c.noAnswer,          tone: 'rose' },
-    { label: 'Interested',       value: c.interested,        tone: 'amber' },
-    { label: 'Not Interested',   value: c.notInterested,     tone: 'rose' },
-    { label: 'Follow-ups',       value: c.followUpsGenerated, tone: 'purple' },
-    { label: 'Converted',        value: c.converted,         tone: 'emerald' },
+    { label: 'Target Leads',   value: c.leads,               tone: 'purple' },
+    { label: 'Calls Made',     value: c.calls,               tone: 'purple' },
+    { label: 'Connected',      value: c.connected,           tone: 'emerald' },
+    { label: 'No Answer',      value: c.noAnswer,            tone: 'rose' },
+    { label: 'Interested',     value: c.interested,          tone: 'amber' },
+    { label: 'Not Interested', value: c.notInterested,       tone: 'rose' },
+    { label: 'Follow-ups',     value: c.followUpsGenerated,  tone: 'purple' },
+    { label: 'Converted',      value: c.converted,           tone: 'emerald' },
   ];
+
+  /* ✅ FIXED: denominator uses max(leads, calls) so percentages stay sensible */
+  const funnelDenom = Math.max(c.leads, c.calls, 1);
 
   const handleExportReport = () => {
     const rows = [
@@ -1467,7 +1542,7 @@ function CampaignMonitoringDrawer({ campaign: c, onClose }) {
       ['Status', c.status],
       ['Source', c.leadSource],
       ['Start', c.startDate],
-      ['End', c.endDate],
+      ['End', c.endDate || '—'],
       ['Call Targets', c.callTargets],
       ['Leads', c.leads],
       ['Calls', c.calls],
@@ -1536,14 +1611,14 @@ function CampaignMonitoringDrawer({ campaign: c, onClose }) {
             </div>
           </div>
 
-          {/* 6 monitoring tiles */}
+          {/* Monitoring tiles */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <MonitorTile icon={CheckCircle2} label="Successful Calls" value={c.connected}     tone="emerald" subtitle={`${connectionRate}% rate`} />
-            <MonitorTile icon={PhoneOff}     label="No Answer"        value={c.noAnswer}      tone="rose"    subtitle={`${noAnswerRate}% of calls`} />
-            <MonitorTile icon={Star}         label="Interested"       value={c.interested}    tone="amber"   subtitle="Warm leads" />
-            <MonitorTile icon={XCircle}      label="Not Interested"   value={c.notInterested} tone="rose"    subtitle="Cold leads" />
-            <MonitorTile icon={Calendar}     label="Follow-ups"       value={c.followUpsGenerated} tone="purple" subtitle="Generated" />
-            <MonitorTile icon={Target}       label="Converted"        value={c.converted}     tone="emerald" subtitle={`${conversionRate}% conversion`} />
+            <MonitorTile icon={CheckCircle2} label="Successful Calls" value={c.connected}           tone="emerald" subtitle={`${connectionRate}% rate`} />
+            <MonitorTile icon={PhoneOff}     label="No Answer"        value={c.noAnswer}            tone="rose"    subtitle={`${noAnswerRate}% of calls`} />
+            <MonitorTile icon={Star}         label="Interested"       value={c.interested}          tone="amber"   subtitle="Warm leads" />
+            <MonitorTile icon={XCircle}      label="Not Interested"   value={c.notInterested}       tone="rose"    subtitle="Cold leads" />
+            <MonitorTile icon={Calendar}     label="Follow-ups"       value={c.followUpsGenerated}  tone="purple"  subtitle="Generated" />
+            <MonitorTile icon={Target}       label="Converted"        value={c.converted}           tone="emerald" subtitle={`${conversionRate}% conversion`} />
           </div>
 
           {/* Funnel */}
@@ -1559,7 +1634,8 @@ function CampaignMonitoringDrawer({ campaign: c, onClose }) {
             </div>
             <div className="space-y-3">
               {funnel.map((step) => {
-                const pct = c.leads > 0 ? Math.round((step.value / c.leads) * 100) : 0;
+                /* ✅ FIXED: sensible denominator + clamped percentage */
+                const pct = Math.min(100, Math.round((step.value / funnelDenom) * 100));
                 const tones = {
                   purple:  { bar: 'from-brand-purple to-brand-magenta', text: 'text-brand-purple' },
                   emerald: { bar: 'from-emerald-500 to-emerald-400',     text: 'text-emerald-600' },
@@ -1578,7 +1654,7 @@ function CampaignMonitoringDrawer({ campaign: c, onClose }) {
                     <div className="h-2 overflow-hidden rounded-full bg-brand-lilac">
                       <div
                         className={`h-full rounded-full bg-gradient-to-r ${tone.bar} transition-all duration-1000`}
-                        style={{ width: `${Math.min(pct, 100)}%` }}
+                        style={{ width: `${pct}%` }}
                       />
                     </div>
                   </div>
@@ -1616,16 +1692,16 @@ function CampaignMonitoringDrawer({ campaign: c, onClose }) {
    ═══════════════════════════════════════════════════════════════ */
 function MonitorTile({ icon: Icon, label, value, tone = 'purple', subtitle }) {
   const tones = {
-    purple:  { fg: 'text-brand-purple',  bg: 'bg-violet-50',  border: 'border-violet-200' },
-    emerald: { fg: 'text-emerald-600',   bg: 'bg-emerald-50', border: 'border-emerald-200' },
-    amber:   { fg: 'text-amber-600',     bg: 'bg-amber-50',   border: 'border-amber-200' },
-    rose:    { fg: 'text-brand-magenta', bg: 'bg-rose-50',    border: 'border-rose-200' },
+    purple:  { fg: 'text-brand-purple',  iconBg: 'bg-violet-100',  border: 'border-violet-200' },
+    emerald: { fg: 'text-emerald-600',   iconBg: 'bg-emerald-100', border: 'border-emerald-200' },
+    amber:   { fg: 'text-amber-600',     iconBg: 'bg-amber-100',   border: 'border-amber-200' },
+    rose:    { fg: 'text-brand-magenta', iconBg: 'bg-rose-100',    border: 'border-rose-200' },
   };
-  const t = tones[tone];
+  const t = tones[tone] || tones.purple;
   return (
-    <div className={`rounded-2xl border-2 ${t.border} ${t.bg} p-4 transition-all hover:-translate-y-0.5 hover:shadow-md`}>
+    <div className={`rounded-2xl border-2 ${t.border} bg-white p-4 transition-all hover:-translate-y-0.5 hover:shadow-md`}>
       <div className="flex items-center justify-between">
-        <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${t.bg} ${t.fg}`}>
+        <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${t.iconBg} ${t.fg}`}>
           <Icon size={16} />
         </span>
       </div>

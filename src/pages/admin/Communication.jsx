@@ -4,14 +4,10 @@ import {
   MessageSquare, Mail, Send, CheckCircle2, XCircle, Clock, X, Search,
   Filter, ChevronDown, Eye, Pencil, Trash2, Phone, Copy,
   Download, FileText, Plus, AlertCircle, MessageCircle, ListFilter,
-  Calendar, Check, Users, Bell, Settings, TrendingUp, TrendingDown,
+  Calendar, Check, Bell, Settings, TrendingUp,
   Sparkles, UserCheck, PhoneMissed, Megaphone, CreditCard, ClipboardList,
-  CalendarClock, Repeat, Grid3x3, List, MoreVertical, Inbox, Activity,
-  ArrowUpRight, Zap, Layers, Percent, Hash, Gift, Star, Crown, Target,
-  Send as SendIcon, CircleDot, Radio, MousePointerClick, AtSign, Paperclip,
-  RefreshCw, Play, PauseCircle, Save, Building2, Award, Hash as HashIcon,
-  ArrowRightLeft, UserPlus, UserMinus, LogIn, LogOut, Pause,
-  BarChart3, PhoneIncoming, PhoneOutgoing, TrendingUp as TrendUp,
+  CalendarClock, Repeat, Grid3x3, List,
+  AtSign,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -88,8 +84,6 @@ const TONE_CLASSES = {
 /* ═══════════════════════════════════════════════════════════════
    HELPERS
    ═══════════════════════════════════════════════════════════════ */
-const uid = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
 const loadState = (key, fallback) => {
   try {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
@@ -121,9 +115,6 @@ const renderPreview = (text) =>
 const findCategory = (key) =>
   TEMPLATE_CATEGORIES.find((c) => c.key === key) ||
   TEMPLATE_CATEGORIES[TEMPLATE_CATEGORIES.length - 1];
-
-const initials = (name) =>
-  (name || '?').split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
@@ -432,13 +423,13 @@ export default function Communication() {
   const isTemplateMode = editingTemplate && !editingTemplate.__prefill;
 
   /* Tab counts for the tabs bar */
-  const tabCounts = {
+  const tabCounts = useMemo(() => ({
     sms: templates.filter((t) => t.channel === 'SMS').length,
     whatsapp: templates.filter((t) => t.channel === 'WhatsApp').length,
     email: templates.filter((t) => t.channel === 'Email').length,
     logs: messages.length,
     notifications: notifications.length,
-  };
+  }), [templates, messages.length, notifications.length]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#FDF8FE] via-white to-[#FBF3FF]">
@@ -475,7 +466,7 @@ export default function Communication() {
           </div>
         </div>
 
-        {/* ═══ KPI STRIP ═══ */}
+        {/* ═══ KPI STRIP — 5-COLUMN GRID, 4 CARDS (5th slot left empty) ═══ */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -485,10 +476,10 @@ export default function Communication() {
                 <h2 className="font-display text-sm font-semibold text-brand-ink">Live Snapshot</h2>
               </div>
             </div>
-            <p className="text-[11px] text-brand-ink/40">Click a card to switch tab</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+          {/* ✅ FIXED: 5-column grid on large screens — cards match sibling pages' size */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             <KpiCard
               icon={Send}
               label="Total Messages"
@@ -523,6 +514,7 @@ export default function Communication() {
               color="rose"
               delay={120}
             />
+            {/* 5th slot intentionally left empty */}
           </div>
         </div>
 
@@ -783,7 +775,7 @@ export default function Communication() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   KPI CARD — matches Agents page design (clickable, animated)
+   KPI CARD
    ═══════════════════════════════════════════════════════════════ */
 function KpiCard({ icon: Icon, label, value, sub, color = 'purple', active, onClick, delay = 0 }) {
   const displayValue = useAnimatedCount(value);
@@ -1003,7 +995,6 @@ function TemplateCard({ template: t, onView, onEdit, onDelete, onUse, onCopy, co
       <span className={`pointer-events-none absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${channelAccent} transition-transform duration-500 group-hover:scale-x-100`} />
       <span className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-brand-magenta/15 opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
 
-      {/* Header */}
       <div className="relative flex items-start gap-3">
         <button
           onClick={onView}
@@ -1032,12 +1023,10 @@ function TemplateCard({ template: t, onView, onEdit, onDelete, onUse, onCopy, co
         </span>
       </div>
 
-      {/* Body preview */}
       <div className="relative mt-3 min-h-[72px] rounded-xl border border-brand-lilac/60 bg-gradient-to-br from-brand-mist/80 to-brand-mist/40 p-3">
         <p className="line-clamp-4 text-xs italic leading-relaxed text-brand-ink/70">"{t.body}"</p>
       </div>
 
-      {/* Actions */}
       <div className="relative mt-4 flex gap-1.5">
         <button
           onClick={onUse}
@@ -1164,7 +1153,7 @@ function LogsTab({ messages, viewMode, onView, onCopy, copiedId }) {
   if (messages.length === 0) {
     return (
       <EmptyState
-        icon={Inbox}
+        icon={ListFilter}
         title="No messages found"
         subtitle="Try adjusting your filters or send a new message."
       />
@@ -1339,7 +1328,6 @@ function NotificationsTab({ notifications, config, onToggleEvent, onSetChannel, 
 
   return (
     <div className="space-y-4">
-      {/* Section switcher */}
       <div className="inline-flex items-center gap-1 rounded-full border border-brand-lilac bg-white p-1">
         <button
           onClick={() => setSection('events')}
@@ -1368,7 +1356,6 @@ function NotificationsTab({ notifications, config, onToggleEvent, onSetChannel, 
         </button>
       </div>
 
-      {/* ── Event Configuration ── */}
       {section === 'events' && (
         <div className="card !p-0 overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-brand-lilac/60 bg-gradient-to-r from-brand-mist/60 to-transparent px-5 py-4">
@@ -1427,7 +1414,6 @@ function NotificationsTab({ notifications, config, onToggleEvent, onSetChannel, 
         </div>
       )}
 
-      {/* ── Inbox ── */}
       {section === 'inbox' && (
         <>
           <div className="flex items-center justify-between">

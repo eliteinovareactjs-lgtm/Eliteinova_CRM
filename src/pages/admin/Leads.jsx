@@ -1,5 +1,5 @@
 // src/pages/admin/Leads.jsx
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Phone, MessageCircle, Users, PhoneMissed, ClipboardList, X, Calendar,
   Search, Download, Upload, Play, ChevronDown, Mic, PhoneIncoming,
@@ -8,7 +8,7 @@ import {
   Percent, TrendingUp, TrendingDown, Grid3x3, List, PhoneOff, MicOff,
   Volume2, VolumeX, PauseCircle, PlayCircle, FileUp, StickyNote, Plus,
   History, Edit3, UserPlus, Inbox, Users2, Send, ArrowRightLeft, UserX,
-  Sparkles, Copy, Filter, ChevronRight, Zap,
+  Sparkles, Copy, Filter, ChevronRight, Zap, Activity,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -64,20 +64,71 @@ const TAB_FILTERS = {
   duplicate:  () => true,
 };
 
+const STORAGE_PREFIX = 'leads:';
+
+/* ============ HELPERS ============ */
+let uidCounter = 0;
+const uid = (prefix) =>
+  `${prefix}-${Date.now()}-${++uidCounter}-${Math.random().toString(36).slice(2, 6)}`;
+
+const loadState = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(`${STORAGE_PREFIX}${key}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch { /* ignore */ }
+  return fallback;
+};
+
+const saveState = (key, value) => {
+  try {
+    localStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(value));
+  } catch { /* ignore */ }
+};
+
 export default function Leads() {
   const { activeWebsiteId, activeWebsite } = useAuth();
 
-  /* ========== LOCAL DATA ========== */
+  /* ========== LOCAL DATA (with persistence) ========== */
   const [allLeads, setAllLeads] = useState(() =>
-    INITIAL_LEADS
-      .filter((l) => l.websiteId === activeWebsiteId)
-      .map((l) => ({
-        ...l,
-        status: l.status || 'Fresh',
-        leadSource: l.leadSource || 'Website',
-        notes: l.notes || [],
-      }))
+    loadState(
+      `list:${activeWebsiteId}`,
+      INITIAL_LEADS
+        .filter((l) => l.websiteId === activeWebsiteId)
+        .map((l) => ({
+          ...l,
+          status: l.status || 'Fresh',
+          leadSource: l.leadSource || 'Website',
+          notes: l.notes || [],
+        }))
+    )
   );
+
+  /* Reload when website changes */
+  useEffect(() => {
+    setAllLeads(
+      loadState(
+        `list:${activeWebsiteId}`,
+        INITIAL_LEADS
+          .filter((l) => l.websiteId === activeWebsiteId)
+          .map((l) => ({
+            ...l,
+            status: l.status || 'Fresh',
+            leadSource: l.leadSource || 'Website',
+            notes: l.notes || [],
+          }))
+      )
+    );
+    setSelectedIds(new Set());
+    setActiveTab('all');
+  }, [activeWebsiteId]);
+
+  /* Persist to localStorage */
+  useEffect(() => {
+    saveState(`list:${activeWebsiteId}`, allLeads);
+  }, [allLeads, activeWebsiteId]);
 
   /* ========== SUB-TAB ========== */
   const [activeTab, setActiveTab] = useState('all');
@@ -120,7 +171,10 @@ export default function Leads() {
   );
 
   /* ========== HELPERS ========== */
-  const agentName = (agentId) => AGENTS.find((a) => a.id === agentId)?.name || 'Unassigned';
+  const agentName = (agentId) =>
+    agents.find((a) => a.id === agentId)?.name ||
+    AGENTS.find((a) => a.id === agentId)?.name ||
+    'Unassigned';
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -136,7 +190,7 @@ export default function Leads() {
     return counts;
   }, [allLeads]);
 
-  /* ========== BASE LEADS (with tab + filters) ========== */
+  /* ========== BASE LEADS ========== */
   const baseLeads = useMemo(() => {
     let leads = allLeads.filter(TAB_FILTERS[activeTab]);
     if (sourceFilter !== 'All') leads = leads.filter((l) => l.leadSource === sourceFilter);
@@ -213,30 +267,32 @@ export default function Leads() {
 
   /* ========== ACTIONS ========== */
   const handleAssignLead = (leadId, agentId) => {
+    const name = agentName(agentId);
     setAllLeads((prev) =>
       prev.map((l) =>
         l.id === leadId
-          ? { ...l, assignedAgentId: agentId, assignedAgent: agentName(agentId) }
+          ? { ...l, assignedAgentId: agentId, assignedAgent: name }
           : l
       )
     );
     setSelected((prev) =>
       prev && prev.id === leadId
-        ? { ...prev, assignedAgentId: agentId, assignedAgent: agentName(agentId) }
+        ? { ...prev, assignedAgentId: agentId, assignedAgent: name }
         : prev
     );
-    showToast(`Lead assigned to ${agentName(agentId) || 'Unassigned'}`);
+    showToast(`Lead assigned to ${name || 'Unassigned'}`);
   };
 
   const handleBulkAssign = (agentId) => {
+    const name = agentName(agentId);
     setAllLeads((prev) =>
       prev.map((l) =>
         selectedIds.has(l.id)
-          ? { ...l, assignedAgentId: agentId, assignedAgent: agentName(agentId) }
+          ? { ...l, assignedAgentId: agentId, assignedAgent: name }
           : l
       )
     );
-    showToast(`${selectedIds.size} leads assigned to ${agentName(agentId)}`);
+    showToast(`${selectedIds.size} leads assigned to ${name}`);
     setSelectedIds(new Set());
     setShowBulkAssign(false);
   };
@@ -258,6 +314,14 @@ export default function Leads() {
 
   const handleDeleteLead = (leadId) => {
     setAllLeads((prev) => prev.filter((l) => l.id !== leadId));
+    setSelectedIds((prev) => {
+      if (prev.has(leadId)) {
+        const next = new Set(prev);
+        next.delete(leadId);
+        return next;
+      }
+      return prev;
+    });
     setConfirmDelete(null);
     setMenuOpenId(null);
     showToast('Lead deleted', 'error');
@@ -277,10 +341,28 @@ export default function Leads() {
     else setSelectedIds(new Set(displayedLeads.map((l) => l.id)));
   };
 
-  /* ========== MERGE DUPLICATES ========== */
+  /* ========== MERGE DUPLICATES (keeps notes from all) ========== */
   const handleMergeDuplicates = (mobile, primaryId, mergedIds) => {
     const idsToDelete = new Set(mergedIds.filter((id) => id !== primaryId));
-    setAllLeads((prev) => prev.filter((l) => !idsToDelete.has(l.id)));
+
+    setAllLeads((prev) => {
+      const primary = prev.find((l) => l.id === primaryId);
+      const duplicates = prev.filter((l) => idsToDelete.has(l.id));
+
+      const allNotes = [
+        ...(primary?.notes || []),
+        ...duplicates.flatMap((d) => d.notes || []),
+      ].sort((a, b) => (b.id || 0) - (a.id || 0));
+
+      const merged = primary
+        ? { ...primary, notes: allNotes }
+        : null;
+
+      return prev
+        .filter((l) => !idsToDelete.has(l.id))
+        .map((l) => (l.id === primaryId && merged ? merged : l));
+    });
+
     setShowMergeDuplicate(null);
     showToast(`Merged ${mergedIds.length} leads into one`);
   };
@@ -321,7 +403,7 @@ export default function Leads() {
 
   const handleCallEnd = (lead, duration, disposition) => {
     const entry = {
-      id: Date.now(),
+      id: uid('call'),
       leadName: lead.name,
       phone: lead.mobile,
       duration,
@@ -341,6 +423,15 @@ export default function Leads() {
                   : disposition === 'Connected' && l.status === 'Fresh'
                   ? 'Follow Up'
                   : l.status,
+              notes: [
+                ...(l.notes || []),
+                {
+                  id: uid('n'),
+                  text: `Call ${disposition.toLowerCase()} · ${duration}`,
+                  by: 'System',
+                  at: new Date().toLocaleString(),
+                },
+              ].slice(0, 20),
             }
           : l
       )
@@ -381,18 +472,23 @@ export default function Leads() {
 
   /* ========== NOTES ========== */
   const handleSaveNote = (lead, note) => {
+    const newNote = {
+      id: uid('n'),
+      text: note,
+      by: 'Admin',
+      at: new Date().toLocaleString(),
+    };
     setAllLeads((prev) =>
       prev.map((l) =>
         l.id === lead.id
-          ? {
-              ...l,
-              notes: [
-                { id: Date.now(), text: note, by: 'Admin', at: new Date().toLocaleString() },
-                ...(l.notes || []),
-              ],
-            }
+          ? { ...l, notes: [newNote, ...(l.notes || [])] }
           : l
       )
+    );
+    setSelected((prev) =>
+      prev && prev.id === lead.id
+        ? { ...prev, notes: [newNote, ...(prev.notes || [])] }
+        : prev
     );
     setNotesLead(null);
     showToast('Note added');
@@ -401,7 +497,7 @@ export default function Leads() {
   /* ========== ADD / EDIT ========== */
   const handleAddLead = (data) => {
     const newLead = {
-      id: `lead-${Date.now()}`,
+      id: uid('lead'),
       websiteId: activeWebsiteId,
       name: data.name,
       mobile: data.mobile,
@@ -412,6 +508,7 @@ export default function Leads() {
       assignedAgentId: data.assignedAgentId || '',
       status: 'Fresh',
       followUpDate: '',
+      followUpNotes: '',
       notes: [],
     };
     setAllLeads((prev) => [newLead, ...prev]);
@@ -421,6 +518,7 @@ export default function Leads() {
 
   const handleUpdateLead = (id, data) => {
     setAllLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...data } : l)));
+    setSelected((prev) => (prev && prev.id === id ? { ...prev, ...data } : prev));
     setEditLead(null);
     showToast('Lead updated');
   };
@@ -428,8 +526,8 @@ export default function Leads() {
   /* ========== IMPORT ========== */
   const handleImportLeads = (parsedRows) => {
     const newLeads = parsedRows
-      .map((row, idx) => ({
-        id: `lead-import-${Date.now()}-${idx}`,
+      .map((row) => ({
+        id: uid('lead-import'),
         name: row.name || row.Name || 'Unnamed Lead',
         mobile: String(row.mobile || row.Mobile || row.phone || '').replace(/\D/g, '').slice(0, 10),
         email: row.email || row.Email || '',
@@ -440,6 +538,7 @@ export default function Leads() {
         assignedAgentId: '',
         status: 'Fresh',
         followUpDate: '',
+        followUpNotes: '',
         notes: [],
       }))
       .filter((l) => l.name && l.mobile);
@@ -467,493 +566,556 @@ export default function Leads() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* ================= HEADER ================= */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-brand-ink">
-            Lead Management
-          </h1>
-          <p className="flex items-center gap-1.5 text-sm text-brand-ink/50">
-            <Building2 size={13} className="text-brand-magenta" />
-            Complete pipeline for{' '}
-            <span className="font-semibold text-brand-magenta">{activeWebsite?.name}</span>
-          </p>
-        </div>
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#FDF8FE] via-white to-[#FBF3FF]">
+      <div className="pointer-events-none absolute -top-32 -right-32 h-96 w-96 rounded-full bg-brand-magenta/[0.05] blur-3xl" />
+      <div className="pointer-events-none absolute top-1/2 -left-32 h-80 w-80 rounded-full bg-brand-purple/[0.05] blur-3xl" />
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setShowAddLead(true)}
-            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-3.5 py-2 text-xs font-semibold text-white shadow-card hover:brightness-110"
-          >
-            <Plus size={14} /> Add Lead
-          </button>
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-3.5 py-2 text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40"
-          >
-            <Upload size={14} /> Import
-          </button>
-          <button
-            onClick={() => handleExport('filtered')}
-            className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-3.5 py-2 text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40"
-          >
-            <Download size={14} /> Export
-          </button>
-        </div>
-      </div>
+      <div className="relative space-y-5 px-1 py-1">
+        {/* ================= HEADER ================= */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="font-display text-xl font-semibold text-brand-ink">
+              Lead Management
+            </h1>
+            <p className="flex items-center gap-1.5 text-sm text-brand-ink/50">
+              <Building2 size={13} className="text-brand-magenta" />
+              Complete pipeline for{' '}
+              <span className="font-semibold text-brand-magenta">{activeWebsite?.name}</span>
+            </p>
+          </div>
 
-      {/* ================= SUMMARY STAT CARDS ================= */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <AnimatedStatCard label="Total Leads" value={summary.total} sub={`${summary.fresh} fresh`} icon={Users} color="purple" trend="+12%" trendUp />
-        <AnimatedStatCard label="Assigned" value={summary.assigned} sub={`${summary.unassigned} pending`} icon={UserCheck} color="emerald" trend="+5" trendUp />
-        <AnimatedStatCard label="Follow-ups" value={summary.followUps} sub="Pending action" icon={ClipboardList} color="amber" trend="+3" trendUp />
-        <AnimatedStatCard label="Conversion" value={`${summary.conversion}%`} sub={`${summary.won} won`} icon={Percent} color="rose" trend="+3%" trendUp />
-      </div>
-
-      {/* ================= CALL LOG (SESSION) ================= */}
-      {callLog.length > 0 && (
-        <div className="card !p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="flex items-center gap-2 font-display text-sm font-semibold text-brand-ink">
-              <Headphones size={14} className="text-brand-magenta" />
-              Recent Calls (this session)
-            </h3>
-            <button onClick={() => setCallLog([])} className="text-xs font-semibold text-rose-500 hover:underline">
-              Clear
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowAddLead(true)}
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-3.5 py-2 text-xs font-semibold text-white shadow-card hover:brightness-110"
+            >
+              <Plus size={14} /> Add Lead
+            </button>
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-3.5 py-2 text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40"
+            >
+              <Upload size={14} /> Import
+            </button>
+            <button
+              onClick={() => handleExport('filtered')}
+              className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-3.5 py-2 text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40"
+            >
+              <Download size={14} /> Export
             </button>
           </div>
-          <div className="space-y-2">
-            {callLog.slice(0, 5).map((c) => (
-              <div key={c.id} className="flex items-center gap-3 rounded-lg border border-brand-lilac/60 bg-white p-2.5">
-                <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                  c.disposition === 'Connected' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'
-                }`}>
-                  {c.disposition === 'Connected' ? <PhoneOutgoing size={14} /> : <PhoneMissed size={14} />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-brand-ink">{c.leadName}</p>
-                  <p className="truncate text-xs text-brand-ink/50">{c.phone}</p>
+        </div>
+
+        {/* ================= KPI STRIP — 5 PER ROW ================= */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="h-5 w-1 rounded-full bg-gradient-to-b from-brand-magenta to-brand-purple" />
+              <div>
+                <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-brand-magenta">
+                  Lead Analytics
+                </p>
+                <h2 className="font-display text-sm font-semibold text-brand-ink">Live Snapshot</h2>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <AnimatedStatCard
+              label="Total Leads"
+              value={summary.total}
+              sub={`${summary.fresh} fresh`}
+              icon={Users}
+              color="purple"
+              trend="+12%"
+              trendUp
+              delay={0}
+            />
+            <AnimatedStatCard
+              label="Assigned"
+              value={summary.assigned}
+              sub={`${summary.unassigned} pending`}
+              icon={UserCheck}
+              color="emerald"
+              trend="+5"
+              trendUp
+              delay={40}
+            />
+            <AnimatedStatCard
+              label="Follow-ups"
+              value={summary.followUps}
+              sub="Pending action"
+              icon={ClipboardList}
+              color="amber"
+              trend="+3"
+              trendUp
+              delay={80}
+            />
+            <AnimatedStatCard
+              label="Conversion"
+              value={`${summary.conversion}%`}
+              sub={`${summary.won} won`}
+              icon={Percent}
+              color="rose"
+              trend="+3%"
+              trendUp
+              delay={120}
+            />
+            <AnimatedStatCard
+              label="Missed Calls"
+              value={summary.missed}
+              sub="Need follow-up"
+              icon={PhoneMissed}
+              color="rose"
+              trend="-2"
+              trendUp={false}
+              delay={160}
+            />
+          </div>
+        </div>
+
+        {/* ================= CALL LOG (SESSION) ================= */}
+        {callLog.length > 0 && (
+          <div className="card !p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 font-display text-sm font-semibold text-brand-ink">
+                <Headphones size={14} className="text-brand-magenta" />
+                Recent Calls (this session)
+              </h3>
+              <button onClick={() => setCallLog([])} className="text-xs font-semibold text-rose-500 hover:underline">
+                Clear
+              </button>
+            </div>
+            <div className="space-y-2">
+              {callLog.slice(0, 5).map((c) => (
+                <div key={c.id} className="flex items-center gap-3 rounded-lg border border-brand-lilac/60 bg-white p-2.5">
+                  <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                    c.disposition === 'Connected' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'
+                  }`}>
+                    {c.disposition === 'Connected' ? <PhoneOutgoing size={14} /> : <PhoneMissed size={14} />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-brand-ink">{c.leadName}</p>
+                    <p className="truncate text-xs text-brand-ink/50">{c.phone}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs font-semibold text-brand-ink">{c.duration}</p>
+                    <p className="text-[10px] text-brand-ink/40">{c.time}</p>
+                  </div>
                 </div>
-                <div className="shrink-0 text-right">
-                  <p className="text-xs font-semibold text-brand-ink">{c.duration}</p>
-                  <p className="text-[10px] text-brand-ink/40">{c.time}</p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ================= TOOLBAR ================= */}
+        <div className="card !p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {GROUP_VIEWS.map((g) => {
+              const Icon = g.icon;
+              const active = groupView === g.key;
+              return (
+                <button
+                  key={g.key}
+                  onClick={() => setGroupView(g.key)}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
+                    active
+                      ? 'border-brand-magenta bg-brand-magenta/10 text-brand-magenta'
+                      : 'border-brand-lilac bg-white text-brand-ink/60 hover:bg-brand-lilac/30'
+                  }`}
+                >
+                  <Icon size={12} />
+                  {g.label}
+                </button>
+              );
+            })}
+
+            <div className="ml-auto flex items-center gap-2">
+              {duplicateCount > 0 && (
+                <button
+                  onClick={() => setActiveTab('duplicate')}
+                  className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] font-bold text-amber-600 hover:bg-amber-100"
+                >
+                  <AlertCircle size={12} />
+                  {duplicateCount} duplicates
+                </button>
+              )}
+              <button
+                onClick={() => setViewMode('list')}
+                className={`rounded-full border p-1.5 ${
+                  viewMode === 'list'
+                    ? 'border-brand-magenta bg-brand-magenta/10 text-brand-magenta'
+                    : 'border-brand-lilac text-brand-ink/50 hover:bg-brand-lilac/30'
+                }`}
+                title="List view"
+              >
+                <List size={14} />
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`rounded-full border p-1.5 ${
+                  viewMode === 'grid'
+                    ? 'border-brand-magenta bg-brand-magenta/10 text-brand-magenta'
+                    : 'border-brand-lilac text-brand-ink/50 hover:bg-brand-lilac/30'
+                }`}
+                title="Grid view"
+              >
+                <Grid3x3 size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ================= SEARCH + SOURCE + AGENT FILTERS ================= */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[220px] flex-1">
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-ink/40" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, mobile, account, source..."
+              className="w-full rounded-full border border-brand-lilac bg-white py-2.5 pl-11 pr-10 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-brand-lilac"
+              >
+                <X size={14} className="text-brand-ink/50" />
+              </button>
+            )}
+          </div>
+
+          <DropdownFilter
+            label="Source"
+            icon={Tag}
+            value={sourceFilter}
+            options={['All', ...SOURCES]}
+            open={sourceOpen}
+            onToggle={() => {
+              setSourceOpen((s) => !s);
+              setAgentOpen(false);
+            }}
+            onChange={(v) => {
+              setSourceFilter(v);
+              setSourceOpen(false);
+            }}
+          />
+
+          <DropdownFilter
+            label="Agent"
+            icon={UserCheck}
+            value={agentFilter}
+            options={['All', 'Unassigned', ...agents.map((a) => a.name)]}
+            open={agentOpen}
+            onToggle={() => {
+              setAgentOpen((s) => !s);
+              setSourceOpen(false);
+            }}
+            onChange={(v) => {
+              setAgentFilter(v);
+              setAgentOpen(false);
+            }}
+          />
+
+          {hasFilters && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-500 hover:bg-rose-100"
+            >
+              <X size={12} /> Clear
+            </button>
+          )}
+        </div>
+
+        {/* ================= SUB-TABS ================= */}
+        <div className="card !p-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {LEAD_TABS.map((t) => {
+              const Icon = t.icon;
+              const active = activeTab === t.key;
+              const count = tabCounts[t.key];
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setActiveTab(t.key)}
+                  className={`group inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all duration-200 ${
+                    active
+                      ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)] scale-[1.02]'
+                      : 'text-brand-ink/60 hover:bg-brand-lilac/50 hover:text-brand-magenta'
+                  }`}
+                >
+                  <Icon size={13} />
+                  {t.label}
+                  <span
+                    className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                      active ? 'bg-white/25 text-white' : 'bg-brand-lilac/70 text-brand-purple'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ================= BULK SELECT BAR ================= */}
+        {displayedLeads.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-full border border-brand-lilac bg-white px-4 py-2.5">
+            <label className="flex items-center gap-2 text-xs font-semibold text-brand-ink/70">
+              <input
+                type="checkbox"
+                checked={selectedIds.size === displayedLeads.length && displayedLeads.length > 0}
+                onChange={handleToggleSelectAll}
+                className="h-4 w-4 rounded border-brand-lilac text-brand-magenta focus:ring-brand-magenta/30"
+              />
+              Select all
+            </label>
+            <span className="text-xs text-brand-ink/50">
+              {selectedIds.size > 0 ? `${selectedIds.size} selected` : `${displayedLeads.length} leads`}
+            </span>
+
+            {selectedIds.size > 0 && (
+              <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => setShowBulkAssign(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-3 py-1.5 text-[11px] font-semibold text-white shadow-card hover:brightness-110"
+                >
+                  <UserCheck size={12} /> Assign
+                </button>
+                <button
+                  onClick={() => handleBulkStatus('Follow Up')}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-600 hover:bg-amber-100"
+                >
+                  <Calendar size={12} /> Follow-up
+                </button>
+                <button
+                  onClick={() => handleBulkStatus('Won')}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-600 hover:bg-emerald-100"
+                >
+                  <CheckCircle2 size={12} /> Mark Won
+                </button>
+                <button
+                  onClick={() => handleExport('selected')}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-brand-lilac bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-ink hover:bg-brand-lilac/40"
+                >
+                  <Download size={12} /> Export
+                </button>
+                <button
+                  onClick={handleBulkDelete}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] font-semibold text-rose-500 hover:bg-rose-100"
+                >
+                  <Trash2 size={12} /> Delete
+                </button>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="rounded-full px-3 py-1.5 text-[11px] font-semibold text-brand-ink/50 hover:bg-brand-lilac/40"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= LEADS CONTENT ================= */}
+        {displayedLeads.length === 0 ? (
+          <EmptyState hasFilters={hasFilters || activeTab !== 'all'} onClear={clearFilters} tab={activeTab} />
+        ) : activeTab === 'duplicate' ? (
+          <div className="space-y-4">
+            {Object.entries(groupedLeads).map(([mobile, group]) => (
+              <div key={mobile} className="card !p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+                      <Copy size={14} />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-brand-ink">{group[0]?.name || 'Unknown'}</p>
+                      <p className="text-xs text-brand-ink/50">{mobile} · {group.length} entries</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowMergeDuplicate({ mobile, leads: group })}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-100"
+                  >
+                    <Sparkles size={12} /> Merge
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {group.map((lead) => (
+                    <LeadItem
+                      key={lead.id}
+                      lead={lead}
+                      viewMode="list"
+                      agentName={agentName}
+                      isDuplicate
+                      isSelected={selectedIds.has(lead.id)}
+                      onToggleSelect={() => handleToggleSelect(lead.id)}
+                      onView={() => setSelected(lead)}
+                      onCall={() => handleCallNow(lead)}
+                      onFollowUp={() => handleSetFollowUp(lead)}
+                      onEdit={() => setEditLead(lead)}
+                      onHistory={() => setHistoryLead(lead)}
+                      onAddNote={() => setNotesLead(lead)}
+                      menuOpenId={menuOpenId}
+                      setMenuOpenId={setMenuOpenId}
+                      onAssignClick={() => {
+                        setSelected(lead);
+                        setMenuOpenId(null);
+                      }}
+                      onDelete={() => {
+                        setConfirmDelete(lead);
+                        setMenuOpenId(null);
+                      }}
+                    />
+                  ))}
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* ================= TOOLBAR ================= */}
-      <div className="card !p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {GROUP_VIEWS.map((g) => {
-            const Icon = g.icon;
-            const active = groupView === g.key;
-            return (
-              <button
-                key={g.key}
-                onClick={() => setGroupView(g.key)}
-                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
-                  active
-                    ? 'border-brand-magenta bg-brand-magenta/10 text-brand-magenta'
-                    : 'border-brand-lilac bg-white text-brand-ink/60 hover:bg-brand-lilac/30'
-                }`}
-              >
-                <Icon size={12} />
-                {g.label}
-              </button>
-            );
-          })}
-
-          <div className="ml-auto flex items-center gap-2">
-            {duplicateCount > 0 && (
-              <button
-                onClick={() => setActiveTab('duplicate')}
-                className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] font-bold text-amber-600 hover:bg-amber-100"
-              >
-                <AlertCircle size={12} />
-                {duplicateCount} duplicates
-              </button>
-            )}
-            <button
-              onClick={() => setViewMode('list')}
-              className={`rounded-full border p-1.5 ${
-                viewMode === 'list'
-                  ? 'border-brand-magenta bg-brand-magenta/10 text-brand-magenta'
-                  : 'border-brand-lilac text-brand-ink/50 hover:bg-brand-lilac/30'
-              }`}
-              title="List view"
-            >
-              <List size={14} />
-            </button>
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`rounded-full border p-1.5 ${
-                viewMode === 'grid'
-                  ? 'border-brand-magenta bg-brand-magenta/10 text-brand-magenta'
-                  : 'border-brand-lilac text-brand-ink/50 hover:bg-brand-lilac/30'
-              }`}
-              title="Grid view"
-            >
-              <Grid3x3 size={14} />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ================= SEARCH + SOURCE + AGENT FILTERS ================= */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[220px] flex-1">
-          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-ink/40" />
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name, mobile, account, source..."
-            className="w-full rounded-full border border-brand-lilac bg-white py-2.5 pl-11 pr-10 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-brand-lilac"
-            >
-              <X size={14} className="text-brand-ink/50" />
-            </button>
-          )}
-        </div>
-
-        <DropdownFilter
-          label="Source"
-          icon={Tag}
-          value={sourceFilter}
-          options={['All', ...SOURCES]}
-          open={sourceOpen}
-          onToggle={() => {
-            setSourceOpen((s) => !s);
-            setAgentOpen(false);
-          }}
-          onChange={(v) => {
-            setSourceFilter(v);
-            setSourceOpen(false);
-          }}
-        />
-
-        <DropdownFilter
-          label="Agent"
-          icon={UserCheck}
-          value={agentFilter}
-          options={['All', 'Unassigned', ...agents.map((a) => a.name)]}
-          open={agentOpen}
-          onToggle={() => {
-            setAgentOpen((s) => !s);
-            setSourceOpen(false);
-          }}
-          onChange={(v) => {
-            setAgentFilter(v);
-            setAgentOpen(false);
-          }}
-        />
-
-        {hasFilters && (
-          <button
-            onClick={clearFilters}
-            className="flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-500 hover:bg-rose-100"
-          >
-            <X size={12} /> Clear
-          </button>
-        )}
-      </div>
-
-      {/* ================= SUB-TABS ================= */}
-      <div className="card !p-2.5">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {LEAD_TABS.map((t) => {
-            const Icon = t.icon;
-            const active = activeTab === t.key;
-            const count = tabCounts[t.key];
-            return (
-              <button
-                key={t.key}
-                onClick={() => setActiveTab(t.key)}
-                className={`group inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all duration-200 ${
-                  active
-                    ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)] scale-[1.02]'
-                    : 'text-brand-ink/60 hover:bg-brand-lilac/50 hover:text-brand-magenta'
-                }`}
-              >
-                <Icon size={13} />
-                {t.label}
-                <span
-                  className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                    active ? 'bg-white/25 text-white' : 'bg-brand-lilac/70 text-brand-purple'
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ================= BULK SELECT BAR ================= */}
-      {displayedLeads.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-full border border-brand-lilac bg-white px-4 py-2.5">
-          <label className="flex items-center gap-2 text-xs font-semibold text-brand-ink/70">
-            <input
-              type="checkbox"
-              checked={selectedIds.size === displayedLeads.length && displayedLeads.length > 0}
-              onChange={handleToggleSelectAll}
-              className="h-4 w-4 rounded border-brand-lilac text-brand-magenta focus:ring-brand-magenta/30"
-            />
-            Select all
-          </label>
-          <span className="text-xs text-brand-ink/50">
-            {selectedIds.size > 0 ? `${selectedIds.size} selected` : `${displayedLeads.length} leads`}
-          </span>
-
-          {selectedIds.size > 0 && (
-            <div className="ml-auto flex flex-wrap items-center gap-1.5">
-              <button
-                onClick={() => setShowBulkAssign(true)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-3 py-1.5 text-[11px] font-semibold text-white shadow-card hover:brightness-110"
-              >
-                <UserCheck size={12} /> Assign
-              </button>
-              <button
-                onClick={() => handleBulkStatus('Follow Up')}
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-600 hover:bg-amber-100"
-              >
-                <Calendar size={12} /> Follow-up
-              </button>
-              <button
-                onClick={() => handleBulkStatus('Won')}
-                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-600 hover:bg-emerald-100"
-              >
-                <CheckCircle2 size={12} /> Mark Won
-              </button>
-              <button
-                onClick={() => handleExport('selected')}
-                className="inline-flex items-center gap-1.5 rounded-full border border-brand-lilac bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-ink hover:bg-brand-lilac/40"
-              >
-                <Download size={12} /> Export
-              </button>
-              <button
-                onClick={handleBulkDelete}
-                className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] font-semibold text-rose-500 hover:bg-rose-100"
-              >
-                <Trash2 size={12} /> Delete
-              </button>
-              <button
-                onClick={() => setSelectedIds(new Set())}
-                className="rounded-full px-3 py-1.5 text-[11px] font-semibold text-brand-ink/50 hover:bg-brand-lilac/40"
-              >
-                Clear
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ================= LEADS CONTENT ================= */}
-      {displayedLeads.length === 0 ? (
-        <EmptyState hasFilters={hasFilters || activeTab !== 'all'} onClear={clearFilters} tab={activeTab} />
-      ) : activeTab === 'duplicate' ? (
-        /* ===== DUPLICATE VIEW ===== */
-        <div className="space-y-4">
-          {Object.entries(groupedLeads).map(([mobile, group]) => (
-            <div key={mobile} className="card !p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
-                    <Copy size={14} />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-brand-ink">{group[0]?.name || 'Unknown'}</p>
-                    <p className="text-xs text-brand-ink/50">{mobile} · {group.length} entries</p>
+        ) : (
+          <div className="space-y-6">
+            {Object.entries(groupedLeads).map(([groupName, groupLeads]) => (
+              <div key={groupName} className="space-y-3">
+                {groupView !== 'all' && (
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-display text-sm font-semibold text-brand-ink">{groupName}</h3>
+                    <span className="rounded-full bg-brand-lilac px-2 py-0.5 text-[10px] font-bold text-brand-purple">
+                      {groupLeads.length}
+                    </span>
                   </div>
-                </div>
-                <button
-                  onClick={() => setShowMergeDuplicate({ mobile, leads: group })}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-100"
+                )}
+                <div
+                  className={
+                    viewMode === 'grid'
+                      ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'
+                      : 'space-y-2'
+                  }
                 >
-                  <Sparkles size={12} /> Merge
-                </button>
-              </div>
-              <div className="space-y-2">
-                {group.map((lead) => (
-                  <LeadItem
-                    key={lead.id}
-                    lead={lead}
-                    viewMode="list"
-                    agentName={agentName}
-                    isDuplicate
-                    isSelected={selectedIds.has(lead.id)}
-                    onToggleSelect={() => handleToggleSelect(lead.id)}
-                    onView={() => setSelected(lead)}
-                    onCall={() => handleCallNow(lead)}
-                    onFollowUp={() => handleSetFollowUp(lead)}
-                    onEdit={() => setEditLead(lead)}
-                    onHistory={() => setHistoryLead(lead)}
-                    onAddNote={() => setNotesLead(lead)}
-                    menuOpenId={menuOpenId}
-                    setMenuOpenId={setMenuOpenId}
-                    onAssignClick={() => {
-                      setSelected(lead);
-                      setMenuOpenId(null);
-                    }}
-                    onDelete={() => {
-                      setConfirmDelete(lead);
-                      setMenuOpenId(null);
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        /* ===== NORMAL GROUPED VIEW ===== */
-        <div className="space-y-6">
-          {Object.entries(groupedLeads).map(([groupName, groupLeads]) => (
-            <div key={groupName} className="space-y-3">
-              {groupView !== 'all' && (
-                <div className="flex items-center gap-2">
-                  <h3 className="font-display text-sm font-semibold text-brand-ink">{groupName}</h3>
-                  <span className="rounded-full bg-brand-lilac px-2 py-0.5 text-[10px] font-bold text-brand-purple">
-                    {groupLeads.length}
-                  </span>
+                  {groupLeads.map((lead) => (
+                    <LeadItem
+                      key={lead.id}
+                      lead={lead}
+                      viewMode={viewMode}
+                      agentName={agentName}
+                      isDuplicate={duplicatesMap.has(lead.id)}
+                      isSelected={selectedIds.has(lead.id)}
+                      onToggleSelect={() => handleToggleSelect(lead.id)}
+                      onView={() => setSelected(lead)}
+                      onCall={() => handleCallNow(lead)}
+                      onFollowUp={() => handleSetFollowUp(lead)}
+                      onEdit={() => setEditLead(lead)}
+                      onHistory={() => setHistoryLead(lead)}
+                      onAddNote={() => setNotesLead(lead)}
+                      menuOpenId={menuOpenId}
+                      setMenuOpenId={setMenuOpenId}
+                      onAssignClick={() => {
+                        setSelected(lead);
+                        setMenuOpenId(null);
+                      }}
+                      onDelete={() => {
+                        setConfirmDelete(lead);
+                        setMenuOpenId(null);
+                      }}
+                    />
+                  ))}
                 </div>
-              )}
-              <div
-                className={
-                  viewMode === 'grid'
-                    ? 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'
-                    : 'space-y-2'
-                }
-              >
-                {groupLeads.map((lead) => (
-                  <LeadItem
-                    key={lead.id}
-                    lead={lead}
-                    viewMode={viewMode}
-                    agentName={agentName}
-                    isDuplicate={duplicatesMap.has(lead.id)}
-                    isSelected={selectedIds.has(lead.id)}
-                    onToggleSelect={() => handleToggleSelect(lead.id)}
-                    onView={() => setSelected(lead)}
-                    onCall={() => handleCallNow(lead)}
-                    onFollowUp={() => handleSetFollowUp(lead)}
-                    onEdit={() => setEditLead(lead)}
-                    onHistory={() => setHistoryLead(lead)}
-                    onAddNote={() => setNotesLead(lead)}
-                    menuOpenId={menuOpenId}
-                    setMenuOpenId={setMenuOpenId}
-                    onAssignClick={() => {
-                      setSelected(lead);
-                      setMenuOpenId(null);
-                    }}
-                    onDelete={() => {
-                      setConfirmDelete(lead);
-                      setMenuOpenId(null);
-                    }}
-                  />
-                ))}
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
 
-      {/* ================= DRAWERS / MODALS ================= */}
-      {selected && (
-        <LeadDrawer
-          lead={selected}
-          agents={agents}
-          onAssign={handleAssignLead}
-          onCall={() => handleCallNow(selected)}
-          onFollowUp={() => handleSetFollowUp(selected)}
-          onAddNote={() => setNotesLead(selected)}
-          onEdit={() => {
-            setEditLead(selected);
-            setSelected(null);
-          }}
-          onHistory={() => setHistoryLead(selected)}
-          onClose={() => setSelected(null)}
-        />
-      )}
+        {/* ================= DRAWERS / MODALS ================= */}
+        {selected && (
+          <LeadDrawer
+            lead={selected}
+            agents={agents}
+            onAssign={handleAssignLead}
+            onCall={() => handleCallNow(selected)}
+            onFollowUp={() => handleSetFollowUp(selected)}
+            onAddNote={() => setNotesLead(selected)}
+            onEdit={() => {
+              setEditLead(selected);
+              setSelected(null);
+            }}
+            onHistory={() => setHistoryLead(selected)}
+            onClose={() => setSelected(null)}
+          />
+        )}
 
-      {showBulkAssign && (
-        <BulkAssignModal
-          agents={agents}
-          count={selectedIds.size}
-          onAssign={handleBulkAssign}
-          onClose={() => setShowBulkAssign(false)}
-        />
-      )}
+        {showBulkAssign && (
+          <BulkAssignModal
+            agents={agents}
+            count={selectedIds.size}
+            onAssign={handleBulkAssign}
+            onClose={() => setShowBulkAssign(false)}
+          />
+        )}
 
-      {showImportModal && (
-        <ImportModal onClose={() => setShowImportModal(false)} onImport={handleImportLeads} />
-      )}
+        {showImportModal && (
+          <ImportModal onClose={() => setShowImportModal(false)} onImport={handleImportLeads} />
+        )}
 
-      {showAddLead && (
-        <AddLeadModal agents={agents} onSave={handleAddLead} onClose={() => setShowAddLead(false)} />
-      )}
+        {showAddLead && (
+          <AddLeadModal agents={agents} onSave={handleAddLead} onClose={() => setShowAddLead(false)} />
+        )}
 
-      {editLead && (
-        <EditLeadModal
-          lead={editLead}
-          agents={agents}
-          onSave={handleUpdateLead}
-          onClose={() => setEditLead(null)}
-        />
-      )}
+        {editLead && (
+          <EditLeadModal
+            lead={editLead}
+            agents={agents}
+            onSave={handleUpdateLead}
+            onClose={() => setEditLead(null)}
+          />
+        )}
 
-      {historyLead && (
-        <HistoryModal lead={historyLead} onClose={() => setHistoryLead(null)} />
-      )}
+        {historyLead && (
+          <HistoryModal lead={historyLead} onClose={() => setHistoryLead(null)} />
+        )}
 
-      {notesLead && (
-        <NotesModal lead={notesLead} onSave={handleSaveNote} onClose={() => setNotesLead(null)} />
-      )}
+        {notesLead && (
+          <NotesModal lead={notesLead} onSave={handleSaveNote} onClose={() => setNotesLead(null)} />
+        )}
 
-      {confirmDelete && (
-        <ConfirmDialog
-          title="Delete lead?"
-          message={`This will permanently delete "${confirmDelete.name}" and all associated data. This action cannot be undone.`}
-          confirmLabel="Delete Lead"
-          onCancel={() => setConfirmDelete(null)}
-          onConfirm={() => handleDeleteLead(confirmDelete.id)}
-        />
-      )}
+        {confirmDelete && (
+          <ConfirmDialog
+            title="Delete lead?"
+            message={`This will permanently delete "${confirmDelete.name}" and all associated data. This action cannot be undone.`}
+            confirmLabel="Delete Lead"
+            onCancel={() => setConfirmDelete(null)}
+            onConfirm={() => handleDeleteLead(confirmDelete.id)}
+          />
+        )}
 
-      {callingLead && (
-        <CallModal
-          target={callingLead}
-          onClose={() => setCallingLead(null)}
-          onEnd={(duration, disposition) => handleCallEnd(callingLead, duration, disposition)}
-        />
-      )}
+        {callingLead && (
+          <CallModal
+            target={callingLead}
+            onClose={() => setCallingLead(null)}
+            onEnd={(duration, disposition) => handleCallEnd(callingLead, duration, disposition)}
+          />
+        )}
 
-      {followUpLead && (
-        <FollowUpModal
-          lead={followUpLead}
-          onClose={() => setFollowUpLead(null)}
-          onSave={(data) => handleSaveFollowUp(followUpLead, data)}
-        />
-      )}
+        {followUpLead && (
+          <FollowUpModal
+            lead={followUpLead}
+            onClose={() => setFollowUpLead(null)}
+            onSave={(data) => handleSaveFollowUp(followUpLead, data)}
+          />
+        )}
 
-      {showMergeDuplicate && (
-        <MergeDuplicateModal
-          mobile={showMergeDuplicate.mobile}
-          leads={showMergeDuplicate.leads}
-          onClose={() => setShowMergeDuplicate(null)}
-          onMerge={handleMergeDuplicates}
-        />
-      )}
+        {showMergeDuplicate && (
+          <MergeDuplicateModal
+            mobile={showMergeDuplicate.mobile}
+            leads={showMergeDuplicate.leads}
+            onClose={() => setShowMergeDuplicate(null)}
+            onMerge={handleMergeDuplicates}
+          />
+        )}
 
-      {toast && <Toast message={toast.msg} type={toast.type} />}
+        {toast && <Toast message={toast.msg} type={toast.type} />}
+      </div>
     </div>
   );
 }
@@ -961,7 +1123,11 @@ export default function Leads() {
 /* ================================================================
    ANIMATED STAT CARD
    ================================================================ */
-function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp }) {
+function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp, delay = 0 }) {
+  const numeric = typeof value === 'number' ? value : 0;
+  const animated = useAnimatedCount(numeric);
+  const display = typeof value === 'number' ? animated : value;
+
   const themes = {
     purple: {
       border: 'border-violet-200 hover:border-violet-400',
@@ -1000,15 +1166,17 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp
       valueColor: 'text-brand-magenta',
     },
   };
-  const t = themes[color];
+  const t = themes[color] || themes.purple;
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border-2 bg-white p-4 shadow-sm transition-all duration-500 hover:-translate-y-1 ${t.border} ${t.shadow}`}
+      style={{ animationDelay: `${delay}ms` }}
+      className={`group relative overflow-hidden rounded-2xl border-2 bg-white p-4 shadow-sm transition-all duration-500 hover:-translate-y-1 animate-fade-slide-in ${t.border} ${t.shadow}`}
     >
       <span className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${t.bg} opacity-0 transition-opacity duration-500 group-hover:opacity-100`} />
       <span className={`absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${t.bar} transition-transform duration-500 group-hover:scale-x-100`} />
       <span className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full ${t.glow} opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100`} />
+      <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/50 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
       <div className="relative">
         <div className="flex items-start justify-between">
           <span className={`flex h-10 w-10 items-center justify-center rounded-xl border ${t.iconBg} transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6`}>
@@ -1023,14 +1191,41 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp
             </span>
           )}
         </div>
-        <p className={`mt-3 font-display text-3xl font-bold leading-tight ${t.valueColor}`}>
-          {typeof value === 'number' ? value.toLocaleString() : value}
+        <p className={`mt-3 font-display text-3xl font-bold leading-tight tabular-nums ${t.valueColor}`}>
+          {display}
         </p>
         <p className="mt-0.5 text-xs font-semibold text-brand-ink/70">{label}</p>
         {sub && <p className="mt-0.5 text-[10px] text-brand-ink/40">{sub}</p>}
       </div>
     </div>
   );
+}
+
+function useAnimatedCount(target, duration = 600) {
+  const [display, setDisplay] = useState(0);
+  const startRef = useRef(null);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    startRef.current = null;
+    const to = Number(target) || 0;
+
+    const tick = (now) => {
+      if (startRef.current === null) startRef.current = now;
+      const elapsed = now - startRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(to * eased));
+      if (progress < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [target, duration]);
+
+  return display.toLocaleString();
 }
 
 /* ================================================================
@@ -1148,7 +1343,6 @@ function LeadItem({
     );
   }
 
-  /* ===== LIST VIEW ===== */
   return (
     <div
       className={`group relative flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border-2 bg-white px-3 py-3 transition-all hover:shadow-md sm:flex-nowrap sm:gap-4 sm:px-4 ${
@@ -1385,8 +1579,14 @@ function LeadDrawer({ lead, agents, onAssign, onCall, onFollowUp, onAddNote, onE
     [lead]
   );
 
-  const agentFollowUps = FOLLOW_UPS.filter((f) => f.leadId === lead.id);
-  const leadCalls = CALLS.filter((c) => c.leadId === lead.id);
+  const agentFollowUps = useMemo(
+    () => (FOLLOW_UPS || []).filter((f) => f.leadId === lead.id),
+    [lead.id]
+  );
+  const leadCalls = useMemo(
+    () => (CALLS || []).filter((c) => c.leadId === lead.id),
+    [lead.id]
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
@@ -1660,12 +1860,29 @@ function CallModal({ target, onClose, onEnd }) {
             <PhoneOutgoing size={14} /> Open in Phone App
           </button>
 
-          <button
-            onClick={() => handleHangUp('Connected')}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 py-3 text-sm font-semibold text-white shadow-card hover:brightness-110"
-          >
-            <PhoneOff size={16} /> End Call
-          </button>
+          {callState === 'ringing' ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={onClose}
+                className="flex items-center justify-center gap-2 rounded-xl border border-brand-lilac bg-white py-3 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleHangUp('Missed')}
+                className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 py-3 text-sm font-semibold text-white shadow-card hover:brightness-110"
+              >
+                <PhoneMissed size={16} /> Missed
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => handleHangUp('Connected')}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 py-3 text-sm font-semibold text-white shadow-card hover:brightness-110"
+            >
+              <PhoneOff size={16} /> End Call
+            </button>
+          )}
         </div>
       </div>
     </div>

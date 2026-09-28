@@ -43,9 +43,16 @@ const DISPOSITION_COLORS = {
   Voicemail:         'bg-violet-100 text-brand-purple',
 };
 
-const CALL_STATUSES = ['connected', 'missed', 'failed', 'abandoned', 'ringing'];
-
 const STORAGE_PREFIX = 'calling:';
+
+/* ✅ FIX: extracted so both the modal and helpers share the same list */
+const DISPOSITION_OPTIONS = [
+  'Interested', 'Converted', 'Follow Up', 'No Answer',
+  'Not Interested', 'Wrong Number', 'Busy', 'Callback', 'Voicemail',
+];
+
+/* ✅ FIX: which tabs render the CallsListTab */
+const CALLS_LIST_TABS = ['all', 'inbound', 'outbound', 'missed', 'abandoned'];
 
 /* ═══════════════════════════════════════════════════════════════
    HELPERS
@@ -69,21 +76,29 @@ const saveState = (key, value) => {
   } catch { /* ignore */ }
 };
 
+/* ✅ FIX: handles H:MM:SS durations too */
 const parseDuration = (d) => {
   if (!d) return 0;
-  const [m, s] = String(d).split(':').map(Number);
-  return (m || 0) * 60 + (s || 0);
+  const parts = String(d).split(':').map(Number);
+  if (parts.length === 3) return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+  return (parts[0] || 0) * 60 + (parts[1] || 0);
 };
 
+/* ✅ FIX: handles hours in display */
 const formatDuration = (sec) => {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}m ${s.toString().padStart(2, '0')}s`;
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  if (h > 0) return `${h}h ${m}m ${ss.toString().padStart(2, '0')}s`;
+  return `${m}m ${ss.toString().padStart(2, '0')}s`;
 };
 
 const formatRelative = (iso) => {
+  if (!iso) return '';
   const now = Date.now();
   const then = new Date(iso).getTime();
+  if (isNaN(then)) return '';
   const diff = Math.max(0, now - then);
   const sec = Math.floor(diff / 1000);
   if (sec < 60) return `${sec}s ago`;
@@ -97,6 +112,9 @@ const formatRelative = (iso) => {
 
 const initials = (name) =>
   (name || '?').split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
+
+/* ✅ FIX: robust callback detection */
+const isCallback = (s) => s.kind === 'callback' || /callback/i.test(s.reason || '');
 
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
@@ -118,27 +136,13 @@ export default function Calling() {
   const [editingDisposition, setEditingDisposition] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
-  /* ── Scoped data (with localStorage persistence) ── */
   const [allCalls, setAllCalls] = useState(() =>
     loadState(`list:${activeWebsiteId}`, INITIAL_CALLS.filter((c) => c.projectId === activeWebsiteId))
   );
+  const [queue, setQueue] = useState(() => loadState(`queue:${activeWebsiteId}`, []));
+  const [campaigns, setCampaigns] = useState(() => loadState(`campaigns:${activeWebsiteId}`, []));
+  const [scheduled, setScheduled] = useState(() => loadState(`scheduled:${activeWebsiteId}`, []));
 
-  /* ── Queue: calls currently waiting ── */
-  const [queue, setQueue] = useState(() =>
-    loadState(`queue:${activeWebsiteId}`, [])
-  );
-
-  /* ── Campaigns: outbound calling campaigns ── */
-  const [campaigns, setCampaigns] = useState(() =>
-    loadState(`campaigns:${activeWebsiteId}`, [])
-  );
-
-  /* ── Scheduled calls: future callbacks ── */
-  const [scheduled, setScheduled] = useState(() =>
-    loadState(`scheduled:${activeWebsiteId}`, [])
-  );
-
-  /* Reload when website changes */
   useEffect(() => {
     setAllCalls(loadState(`list:${activeWebsiteId}`, INITIAL_CALLS.filter((c) => c.projectId === activeWebsiteId)));
     setQueue(loadState(`queue:${activeWebsiteId}`, []));
@@ -147,7 +151,6 @@ export default function Calling() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWebsiteId]);
 
-  /* Persist */
   useEffect(() => { saveState(`list:${activeWebsiteId}`, allCalls); }, [allCalls, activeWebsiteId]);
   useEffect(() => { saveState(`queue:${activeWebsiteId}`, queue); }, [queue, activeWebsiteId]);
   useEffect(() => { saveState(`campaigns:${activeWebsiteId}`, campaigns); }, [campaigns, activeWebsiteId]);
@@ -163,7 +166,6 @@ export default function Calling() {
     [allCalls, activeWebsiteId]
   );
 
-  /* ── Helpers ── */
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2400);
@@ -194,6 +196,7 @@ export default function Calling() {
     });
   };
 
+  /* ✅ FIX: handles all delete kinds */
   const performDelete = () => {
     if (!confirmDelete) return;
     if (confirmDelete.kind === 'call') {
@@ -202,25 +205,35 @@ export default function Calling() {
     } else if (confirmDelete.kind === 'campaign') {
       setCampaigns((p) => p.filter((c) => c.id !== confirmDelete.id));
       showToast(`Campaign removed`, 'error');
+    } else if (confirmDelete.kind === 'scheduled') {
+      setScheduled((p) => p.filter((s) => s.id !== confirmDelete.id));
+      showToast('Scheduled call removed', 'error');
+    } else if (confirmDelete.kind === 'queue') {
+      setQueue((p) => p.filter((q) => q.id !== confirmDelete.id));
+      showToast('Removed from queue', 'error');
     }
     setConfirmDelete(null);
   };
 
-  /* ── Missed → Callback / Follow-up ── */
+  /* ✅ FIX: prevents duplicate callbacks + tags with `kind` */
   const handleConvertToCallback = (call) => {
+    if (scheduled.some((s) => s.originalCallId === call.id)) {
+      showToast('Callback already scheduled for this call', 'error');
+      return;
+    }
     const newScheduled = {
       id: uid('sch'),
       projectId: activeWebsiteId,
       customer: call.customer,
       mobile: call.mobile,
       agent: call.agent || 'Unassigned',
-      scheduledAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // +1 hr
+      scheduledAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       reason: 'Callback from missed call',
+      kind: 'callback',
       originalCallId: call.id,
       status: 'Scheduled',
     };
     setScheduled((p) => [newScheduled, ...p]);
-    // mark original call as callback
     logCallUpdate(call.id, { disposition: 'Callback', callbackScheduled: true });
     showToast(`Callback scheduled for ${call.customer}`);
   };
@@ -229,6 +242,7 @@ export default function Calling() {
     const newScheduled = {
       id: uid('sch'),
       projectId: activeWebsiteId,
+      kind: data.kind || 'scheduled',
       ...data,
       status: 'Scheduled',
     };
@@ -236,7 +250,6 @@ export default function Calling() {
     showToast(`Call scheduled for ${data.customer}`);
   };
 
-  /* ── Add to queue ── */
   const handleAddToQueue = (call) => {
     if (queue.some((q) => q.mobile === call.mobile)) {
       showToast('Already in queue', 'error');
@@ -250,18 +263,21 @@ export default function Calling() {
         customer: call.customer,
         mobile: call.mobile,
         addedAt: new Date().toISOString(),
-        priority: queue.length,
       },
     ]);
     showToast(`${call.customer} added to queue`);
   };
 
+  /* ✅ FIX: asks for confirmation before removing from queue */
   const handleRemoveFromQueue = (id) => {
-    setQueue((p) => p.filter((q) => q.id !== id));
-    showToast('Removed from queue');
+    setConfirmDelete({
+      kind: 'queue',
+      id,
+      name: queue.find((q) => q.id === id)?.customer || 'Queue item',
+      message: 'Remove this number from the queue?',
+    });
   };
 
-  /* ── Campaigns CRUD ── */
   const handleAddCampaign = (data) => {
     const newCampaign = {
       id: uid('cmp'),
@@ -283,7 +299,6 @@ export default function Calling() {
     showToast(`Campaign ${status.toLowerCase()}`);
   };
 
-  /* ── Filtered calls ── */
   const filtered = useMemo(() => {
     let rows = [...scopedCalls];
 
@@ -308,7 +323,6 @@ export default function Calling() {
     return rows.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   }, [scopedCalls, tab, statusFilter, agentFilter, searchQuery]);
 
-  /* ── Summary ── */
   const summary = useMemo(() => {
     const total = scopedCalls.length;
     const inbound = scopedCalls.filter((c) => c.type === 'inbound').length;
@@ -323,7 +337,6 @@ export default function Calling() {
     return { total, inbound, outbound, connected, missed, abandoned, avgDuration, connectionRate, totalSec };
   }, [scopedCalls]);
 
-  /* ── Disposition breakdown ── */
   const dispositionBreakdown = useMemo(() => {
     const map = {};
     scopedCalls.forEach((c) => {
@@ -333,7 +346,6 @@ export default function Calling() {
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [scopedCalls]);
 
-  /* ── Agent-wise breakdown ── */
   const agentBreakdown = useMemo(() => {
     return agents.map((agent) => {
       const calls = scopedCalls.filter((c) => c.agent === agent.name);
@@ -353,7 +365,6 @@ export default function Calling() {
     }).sort((a, b) => b.calls - a.calls);
   }, [agents, scopedCalls]);
 
-  /* ── Export ── */
   const handleExport = () => {
     if (filtered.length === 0) {
       showToast('No calls to export', 'error');
@@ -386,6 +397,7 @@ export default function Calling() {
     setSearchQuery('');
   };
 
+  /* ✅ FIX: uses `isCallback` helper */
   const counts = {
     all: summary.total,
     inbound: summary.inbound,
@@ -395,7 +407,7 @@ export default function Calling() {
     queue: queue.length,
     campaigns: campaigns.length,
     scheduled: scheduled.length,
-    callbacks: scheduled.filter((s) => s.reason?.toLowerCase().includes('callback')).length,
+    callbacks: scheduled.filter(isCallback).length,
     recordings: scopedCalls.filter((c) => c.status === 'connected').length,
     disposition: dispositionBreakdown.length,
     agents: agents.length,
@@ -435,10 +447,10 @@ export default function Calling() {
                 <h2 className="font-display text-sm font-semibold text-brand-ink">Live Snapshot</h2>
               </div>
             </div>
-            <p className="text-[11px] text-brand-ink/40">Click a card to switch tab</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+          {/* ✅ FIX: 4 per row on large (5 cards → 4 + 1) */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
             <KpiCard icon={PhoneCall}  label="Total Calls"   value={summary.total}          sub={`${summary.inbound} in · ${summary.outbound} out`} color="purple"  active={tab === 'all'}        onClick={() => setTab('all')}        delay={0} />
             <KpiCard icon={Headphones} label="Connected"     value={summary.connected}      sub={`${summary.connectionRate}% rate`}                 color="emerald" active={tab === 'inbound'}    onClick={() => setTab('inbound')}    delay={40} />
             <KpiCard icon={PhoneMissed} label="Missed"       value={summary.missed}         sub="Needs follow-up"                                   color="rose"    active={tab === 'missed'}     onClick={() => setTab('missed')}     delay={80} />
@@ -474,7 +486,7 @@ export default function Calling() {
         </div>
 
         {/* ═══ TAB CONTENT ═══ */}
-        {(tab === 'all' || tab === 'inbound' || tab === 'outbound' || tab === 'missed' || tab === 'abandoned') && (
+        {CALLS_LIST_TABS.includes(tab) && (
           <CallsListTab
             calls={filtered}
             agents={agents}
@@ -497,6 +509,7 @@ export default function Calling() {
             onCallback={handleConvertToCallback}
             onAddToQueue={handleAddToQueue}
             onDelete={(c) => handleDeleteCall(c.id, c.customer)}
+            showToast={showToast}
           />
         )}
 
@@ -504,9 +517,7 @@ export default function Calling() {
           <QueueTab
             queue={queue}
             onRemove={handleRemoveFromQueue}
-            onCall={(q) => {
-              window.location.href = `tel:${q.mobile}`;
-            }}
+            onCall={(q) => { window.location.href = `tel:${q.mobile}`; }}
           />
         )}
 
@@ -526,24 +537,32 @@ export default function Calling() {
           <ScheduledTab
             scheduled={scheduled}
             agents={agents}
-            onSchedule={handleScheduleCall}
+            onSchedule={(data) => handleScheduleCall({ ...data, kind: 'scheduled' })}
             onCall={(s) => { window.location.href = `tel:${s.mobile}`; }}
             onCancel={(id) => {
-              setScheduled((p) => p.filter((s) => s.id !== id));
-              showToast('Scheduled call cancelled');
+              setConfirmDelete({
+                kind: 'scheduled',
+                id,
+                name: scheduled.find((s) => s.id === id)?.customer || 'Scheduled call',
+                message: 'Cancel this scheduled call?',
+              });
             }}
           />
         )}
 
         {tab === 'callbacks' && (
           <ScheduledTab
-            scheduled={scheduled.filter((s) => s.reason?.toLowerCase().includes('callback'))}
+            scheduled={scheduled.filter(isCallback)}
             agents={agents}
-            onSchedule={handleScheduleCall}
+            onSchedule={(data) => handleScheduleCall({ ...data, kind: 'callback' })}
             onCall={(s) => { window.location.href = `tel:${s.mobile}`; }}
             onCancel={(id) => {
-              setScheduled((p) => p.filter((s) => s.id !== id));
-              showToast('Callback cancelled');
+              setConfirmDelete({
+                kind: 'scheduled',
+                id,
+                name: scheduled.find((s) => s.id === id)?.customer || 'Callback',
+                message: 'Cancel this callback?',
+              });
             }}
             emptyMessage="No callbacks pending"
           />
@@ -560,15 +579,6 @@ export default function Calling() {
           <DispositionTab
             breakdown={dispositionBreakdown}
             total={summary.total}
-            onEdit={(label) => {
-              // Filter calls with this disposition
-              setSearchQuery('');
-              setStatusFilter('All');
-              setAgentFilter('All');
-              setTab('all');
-              // Optionally pre-set disposition filter via a dedicated state — skipped for brevity
-              showToast(`Filtered to ${label} calls`);
-            }}
           />
         )}
 
@@ -625,7 +635,7 @@ export default function Calling() {
           <ConfirmDialog
             title={`Remove ${confirmDelete.kind}?`}
             message={confirmDelete.message}
-            confirmLabel={`Remove ${confirmDelete.kind}`}
+            confirmLabel={`Remove`}
             onCancel={() => setConfirmDelete(null)}
             onConfirm={performDelete}
           />
@@ -641,7 +651,8 @@ export default function Calling() {
    KPI CARD
    ═══════════════════════════════════════════════════════════════ */
 function KpiCard({ icon: Icon, label, value, sub, color = 'purple', active, onClick, delay = 0 }) {
-  const displayValue = useAnimatedCount(typeof value === 'number' ? value : 0);
+  const numericValue = typeof value === 'number' ? value : 0;
+  const displayValue = useAnimatedCount(numericValue);
   const isNumeric = typeof value === 'number';
 
   const themes = {
@@ -650,7 +661,7 @@ function KpiCard({ icon: Icon, label, value, sub, color = 'purple', active, onCl
     amber:   { border: 'border-amber-200 hover:border-amber-400', bg: 'from-amber-50 via-amber-50/30 to-white', iconBg: 'bg-amber-100 text-amber-600 border-amber-200', bar: 'from-amber-500 to-orange-400', glow: 'bg-amber-500/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(245,158,11,0.4)]', valueColor: 'text-amber-600', ring: 'ring-amber-300' },
     rose:    { border: 'border-rose-200 hover:border-rose-400', bg: 'from-rose-50 via-rose-50/30 to-white', iconBg: 'bg-rose-100 text-brand-magenta border-rose-200', bar: 'from-brand-magenta to-brand-purple', glow: 'bg-brand-magenta/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(227,28,121,0.45)]', valueColor: 'text-brand-magenta', ring: 'ring-rose-300' },
   };
-  const t = themes[color];
+  const t = themes[color] || themes.purple;
 
   return (
     <button
@@ -713,7 +724,7 @@ function useAnimatedCount(target, duration = 600) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   TAB 1 — CALLS LIST (all / inbound / outbound / missed / abandoned)
+   CALLS LIST TAB
    ═══════════════════════════════════════════════════════════════ */
 function CallsListTab({
   calls, agents,
@@ -724,12 +735,12 @@ function CallsListTab({
   agentOpen, setAgentOpen,
   hasFilters, onClearFilters,
   onView, onPlay, onNote, onDisposition, onCallback, onAddToQueue, onDelete,
+  showToast,
 }) {
   const [menuOpenId, setMenuOpenId] = useState(null);
 
   return (
     <div className="space-y-4">
-      {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[220px] flex-1">
           <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-ink/40" />
@@ -782,7 +793,7 @@ function CallsListTab({
               onCallback={() => onCallback(call)}
               onAddToQueue={() => onAddToQueue(call)}
               onDelete={() => onDelete(call)}
-              onCopy={() => { navigator.clipboard?.writeText(call.mobile); }}
+              onCopy={() => { navigator.clipboard?.writeText(call.mobile); showToast?.('Number copied'); }}
             />
           ))}
         </div>
@@ -836,7 +847,6 @@ function CallRow({ call, menuOpenId, setMenuOpenId, onView, onPlay, onNote, onDi
 
       <span className="hidden shrink-0 font-mono text-[10px] text-brand-ink/40 lg:block">{call.date}</span>
 
-      {/* Visible action buttons */}
       <div className="flex shrink-0 items-center gap-1">
         <button
           onClick={onView}
@@ -1075,6 +1085,12 @@ function CampaignsTab({ campaigns, onAdd, onUpdateStatus, onDelete }) {
 function ScheduledTab({ scheduled, agents, onSchedule, onCall, onCancel, emptyMessage }) {
   const [showSchedule, setShowSchedule] = useState(false);
 
+  /* ✅ FIX: memoized sort */
+  const sorted = useMemo(
+    () => [...scheduled].sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)),
+    [scheduled]
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -1095,7 +1111,7 @@ function ScheduledTab({ scheduled, agents, onSchedule, onCall, onCancel, emptyMe
         </button>
       </div>
 
-      {scheduled.length === 0 ? (
+      {sorted.length === 0 ? (
         <div className="card flex flex-col items-center gap-3 py-16 text-center">
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-lilac text-brand-magenta">
             <CalendarClock size={22} />
@@ -1114,7 +1130,7 @@ function ScheduledTab({ scheduled, agents, onSchedule, onCall, onCancel, emptyMe
       ) : (
         <div className="card !p-0 overflow-hidden">
           <ul className="divide-y divide-brand-lilac/40">
-            {[...scheduled].sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)).map((s) => {
+            {sorted.map((s) => {
               const scheduledTime = new Date(s.scheduledAt);
               const isPast = scheduledTime.getTime() < Date.now();
               const isToday = scheduledTime.toDateString() === new Date().toDateString();
@@ -1415,14 +1431,12 @@ function CallDetailsDrawer({ call, onClose, onPlay, onCopy, onNote, onDispositio
         </div>
 
         <div className="space-y-5 p-6">
-          {/* Summary tiles */}
           <div className="grid grid-cols-3 gap-3">
             <InfoBox label="Type" value={call.type} color={call.type === 'inbound' ? 'emerald' : 'purple'} />
             <InfoBox label="Status" value={call.status} color={isConnected ? 'emerald' : isMissed || isAbandoned ? 'rose' : 'amber'} />
             <InfoBox label="Duration" value={call.duration} color="purple" />
           </div>
 
-          {/* Details */}
           <div className="card !p-4 space-y-3">
             <h4 className="font-display text-sm font-semibold text-brand-ink">Call Information</h4>
             <Row label="Call ID" value={call.id} />
@@ -1431,7 +1445,6 @@ function CallDetailsDrawer({ call, onClose, onPlay, onCopy, onNote, onDispositio
             <Row label="Date" value={call.date} />
           </div>
 
-          {/* Notes */}
           <div className="card !p-4">
             <div className="mb-3 flex items-center justify-between">
               <h4 className="flex items-center gap-2 font-display text-sm font-semibold text-brand-ink">
@@ -1452,7 +1465,6 @@ function CallDetailsDrawer({ call, onClose, onPlay, onCopy, onNote, onDispositio
             )}
           </div>
 
-          {/* Recording */}
           {isConnected && (
             <div className="card !p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -1479,7 +1491,6 @@ function CallDetailsDrawer({ call, onClose, onPlay, onCopy, onNote, onDispositio
             </div>
           )}
 
-          {/* Actions */}
           <div className="grid grid-cols-2 gap-2">
             <a
               href={`tel:${call.mobile}`}
@@ -1534,12 +1545,28 @@ function CallDetailsDrawer({ call, onClose, onPlay, onCopy, onNote, onDispositio
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   RECORDING MODAL
+   RECORDING MODAL — with animated progress
    ═══════════════════════════════════════════════════════════════ */
 function RecordingModal({ call, name, onClose }) {
   const [playing, setPlaying] = useState(true);
   const [muted, setMuted] = useState(false);
-  const [progress, setProgress] = useState(30);
+  const [progress, setProgress] = useState(0);
+
+  const totalSec = parseDuration(call.duration);
+
+  /* ✅ FIX: progress actually advances */
+  useEffect(() => {
+    if (!playing) return;
+    const id = setInterval(() => {
+      setProgress((p) => {
+        if (p >= 100) { setPlaying(false); return 100; }
+        return Math.min(100, p + (1 / Math.max(totalSec, 1)) * 100);
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [playing, totalSec]);
+
+  const elapsed = Math.floor((progress / 100) * totalSec);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
@@ -1559,7 +1586,7 @@ function RecordingModal({ call, name, onClose }) {
           <p className="text-lg font-semibold">{call.customer}</p>
           <p className="font-mono text-[11px] text-white/70">{name}</p>
           <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-white/80">
-            {playing ? 'Now Playing' : 'Paused'}
+            {playing ? 'Now Playing' : progress >= 100 ? 'Finished' : 'Paused'}
           </p>
         </div>
 
@@ -1567,12 +1594,12 @@ function RecordingModal({ call, name, onClose }) {
           <div className="mb-2">
             <div className="h-2 overflow-hidden rounded-full bg-brand-lilac">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple transition-all"
+                className="h-full rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple transition-all duration-1000"
                 style={{ width: `${progress}%` }}
               />
             </div>
             <div className="mt-1.5 flex justify-between font-mono text-[10px] text-brand-ink/50">
-              <span>{formatDuration((progress / 100) * parseDuration(call.duration))}</span>
+              <span>{formatDuration(elapsed)}</span>
               <span>{call.duration}</span>
             </div>
           </div>
@@ -1595,7 +1622,7 @@ function RecordingModal({ call, name, onClose }) {
               {playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
             </button>
             <button
-              onClick={() => setProgress(0)}
+              onClick={() => { setProgress(0); setPlaying(true); }}
               className="flex h-10 w-10 items-center justify-center rounded-full border border-brand-lilac text-brand-ink/60 hover:bg-brand-lilac/30"
             >
               <RotateCcw size={16} />
@@ -1646,15 +1673,11 @@ function NotesModal({ call, onClose, onSave }) {
    DISPOSITION MODAL
    ═══════════════════════════════════════════════════════════════ */
 function DispositionModal({ call, onClose, onSave }) {
-  const OPTIONS = [
-    'Interested', 'Converted', 'Follow Up', 'No Answer',
-    'Not Interested', 'Wrong Number', 'Busy', 'Callback', 'Voicemail',
-  ];
   const [selected, setSelected] = useState(call.disposition || '');
   return (
     <ModalShell title="Set Disposition" subtitle={`For ${call.customer}`} onClose={onClose}>
       <div className="grid grid-cols-2 gap-2">
-        {OPTIONS.map((opt) => (
+        {DISPOSITION_OPTIONS.map((opt) => (
           <button
             key={opt}
             onClick={() => setSelected(opt)}
@@ -1688,11 +1711,17 @@ function DispositionModal({ call, onClose, onSave }) {
    SCHEDULE CALL MODAL
    ═══════════════════════════════════════════════════════════════ */
 function ScheduleCallModal({ agents, onClose, onSubmit }) {
+  /* ✅ FIX: build local time string safely */
+  const defaultLocal = new Date(Date.now() + 60 * 60 * 1000)
+    .toLocaleString('sv-SE', { hour12: false })
+    .replace(' ', 'T')
+    .slice(0, 16);
+
   const [form, setForm] = useState({
     customer: '',
     mobile: '',
     agent: agents[0]?.name || '',
-    scheduledAt: new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16),
+    scheduledAt: defaultLocal,
     reason: '',
   });
   const [error, setError] = useState('');
@@ -1700,11 +1729,13 @@ function ScheduleCallModal({ agents, onClose, onSubmit }) {
   const handleSubmit = () => {
     if (!form.customer.trim()) { setError('Customer name is required'); return; }
     if (!/^\d{10}$/.test(form.mobile)) { setError('Mobile must be 10 digits'); return; }
+    const when = new Date(form.scheduledAt);
+    if (isNaN(when.getTime())) { setError('Please pick a valid date and time'); return; }
     onSubmit({
       customer: form.customer.trim(),
       mobile: form.mobile,
       agent: form.agent,
-      scheduledAt: new Date(form.scheduledAt).toISOString(),
+      scheduledAt: when.toISOString(),
       reason: form.reason.trim() || 'Scheduled call',
     });
   };
@@ -1811,7 +1842,7 @@ function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onC
       >
         {Icon && <Icon size={14} className="text-brand-magenta" />}
         {label}: <span className="font-semibold text-brand-magenta">{value}</span>
-        <ChevronDown size={14} className="text-brand-ink/40" />
+        <ChevronDown size={14} className={`text-brand-ink/40 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <>
@@ -1864,9 +1895,11 @@ function InfoBox({ label, value, color = 'purple' }) {
     rose: 'bg-rose-50 text-brand-magenta border-rose-200',
   };
   return (
-    <div className={`rounded-xl border p-3 text-center ${colors[color]}`}>
+    <div className={`rounded-xl border p-3 text-center ${colors[color] || colors.purple}`}>
       <p className="font-mono text-[9px] font-semibold uppercase tracking-wider opacity-70">{label}</p>
-      <p className="mt-1 truncate text-sm font-bold capitalize">{value}</p>
+      <p className="mt-1 truncate text-sm font-bold capitalize">
+        {typeof value === 'number' ? value.toLocaleString() : String(value ?? '')}
+      </p>
     </div>
   );
 }
@@ -1879,7 +1912,7 @@ function MiniBox({ label, value, tone = 'purple' }) {
   };
   return (
     <div className="rounded-xl bg-brand-mist p-2.5">
-      <p className={`font-display text-base font-bold tabular-nums ${tones[tone]}`}>{value}</p>
+      <p className={`font-display text-base font-bold tabular-nums ${tones[tone] || tones.purple}`}>{value}</p>
       <p className="font-mono text-[9px] uppercase tracking-wider text-brand-ink/50">{label}</p>
     </div>
   );

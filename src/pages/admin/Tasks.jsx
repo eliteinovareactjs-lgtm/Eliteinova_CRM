@@ -9,6 +9,8 @@ import {
   Megaphone, CircleDot, Send, AtSign, Radio, FileText, Hash, Copy,
   StickyNote, ClipboardList, Users, Sparkles, RotateCcw, Download,
   PhoneIncoming, PhoneOutgoing, Mail, MessageCircle, XCircle, Play,
+  Inbox, Activity, TrendingUp, Award, Crown, Grid3x3, List,
+  MoreHorizontal, ArrowRightLeft, UserMinus, LogIn, LogOut, Pause,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -25,9 +27,9 @@ const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 const TASK_STATUSES = ['Pending', 'In Progress', 'Completed', 'Cancelled'];
 
 const REMINDER_TYPES = [
-  { key: 'Call',       label: 'Call Reminder',      icon: PhoneCall,    tone: 'purple' },
-  { key: 'Follow-up',  label: 'Follow-up Reminder', icon: Repeat,       tone: 'amber' },
-  { key: 'Customer',   label: 'Customer Reminder',  icon: Users,        tone: 'rose' },
+  { key: 'Call',       label: 'Call Reminder',      icon: PhoneCall,     tone: 'purple' },
+  { key: 'Follow-up',  label: 'Follow-up Reminder', icon: Repeat,        tone: 'amber' },
+  { key: 'Customer',   label: 'Customer Reminder',  icon: Users,         tone: 'rose' },
   { key: 'Task',       label: 'Task Reminder',      icon: ClipboardList, tone: 'emerald' },
 ];
 
@@ -93,8 +95,10 @@ const saveState = (key, value) => {
 };
 
 const formatRelative = (iso) => {
+  if (!iso) return '';
   const now = Date.now();
   const then = new Date(iso).getTime();
+  if (isNaN(then)) return '';
   const diff = Math.max(0, now - then);
   const min = Math.floor(diff / 60000);
   if (min < 1) return 'Just now';
@@ -102,7 +106,16 @@ const formatRelative = (iso) => {
   const hr = Math.floor(min / 60);
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
-  return `${day}d ago`;
+  if (day < 30) return `${day}d ago`;
+  const mo = Math.floor(day / 30);
+  return `${mo}mo ago`;
+};
+
+/* Normalize a reminder's `time` field — always store ISO date + separate time */
+const buildReminderWhen = (dateStr, timeStr) => {
+  if (!dateStr) return '';
+  if (!timeStr) return dateStr;
+  return `${dateStr} · ${timeStr}`;
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -150,6 +163,7 @@ export default function Tasks() {
   const [statusOpen, setStatusOpen] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const [viewMode, setViewMode] = useState('list');
 
   /* Modals */
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -157,7 +171,10 @@ export default function Tasks() {
   const [viewingTask, setViewingTask] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [showReminderModal, setShowReminderModal] = useState(false);
+  const [editingReminder, setEditingReminder] = useState(null);
+  const [viewingReminder, setViewingReminder] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [viewingNotification, setViewingNotification] = useState(null);
 
   const agents = useMemo(
     () => AGENTS.filter((a) => a.websiteId === activeWebsiteId),
@@ -230,8 +247,19 @@ export default function Tasks() {
   };
 
   const handleCompleteTask = (id) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status: 'Completed' } : t)));
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === id ? { ...t, status: 'Completed', completedAt: new Date().toISOString() } : t
+      )
+    );
     showToast('Task marked complete');
+  };
+
+  const handleReopenTask = (id) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, status: 'Pending', completedAt: null } : t))
+    );
+    showToast('Task reopened');
   };
 
   /* ── Reminder actions ── */
@@ -248,14 +276,35 @@ export default function Tasks() {
     showToast(`Reminder "${data.title}" created`);
   };
 
+  const handleEditReminder = (id, updates) => {
+    setReminders((prev) => prev.map((r) => (r.id === id ? { ...r, ...updates } : r)));
+    setEditingReminder(null);
+    setShowReminderModal(false);
+    showToast('Reminder updated');
+  };
+
   const handleCompleteReminder = (id) => {
-    setReminders((prev) => prev.map((r) => (r.id === id ? { ...r, status: 'Completed' } : r)));
+    setReminders((prev) =>
+      prev.map((r) =>
+        r.id === id ? { ...r, status: 'Completed', completedAt: new Date().toISOString() } : r
+      )
+    );
     showToast('Reminder marked complete');
   };
 
+  const handleReopenReminder = (id) => {
+    setReminders((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status: 'Upcoming', completedAt: null } : r))
+    );
+    showToast('Reminder reopened');
+  };
+
   const handleDeleteReminder = (id) => {
-    setReminders((prev) => prev.filter((r) => r.id !== id));
-    showToast('Reminder deleted', 'error');
+    setConfirmDelete({
+      kind: 'reminder',
+      id,
+      title: reminders.find((r) => r.id === id)?.title || 'Reminder',
+    });
   };
 
   /* ── Notification actions ── */
@@ -266,7 +315,6 @@ export default function Tasks() {
       ...data,
       read: false,
       createdAt: new Date().toISOString(),
-      time: 'Just now',
     };
     setNotifications((prev) => [newNotif, ...prev]);
     setShowNotificationModal(false);
@@ -277,19 +325,47 @@ export default function Tasks() {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
+  const handleMarkUnread = (id) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: false } : n)));
+  };
+
   const handleMarkAllRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     showToast('All notifications marked as read');
   };
 
   const handleDeleteNotification = (id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    showToast('Notification deleted', 'error');
+    setConfirmDelete({
+      kind: 'notification',
+      id,
+      title: notifications.find((n) => n.id === id)?.title || 'Notification',
+    });
   };
 
   const handleClearAllNotifications = () => {
-    setNotifications([]);
-    showToast('All notifications cleared', 'error');
+    setConfirmDelete({
+      kind: 'allNotifications',
+      title: 'all notifications',
+    });
+  };
+
+  const performDelete = () => {
+    if (!confirmDelete) return;
+    if (confirmDelete.kind === 'task') {
+      handleDeleteTask(confirmDelete.id);
+    } else if (confirmDelete.kind === 'reminder') {
+      setReminders((prev) => prev.filter((r) => r.id !== confirmDelete.id));
+      showToast(`Reminder "${confirmDelete.title}" deleted`, 'error');
+      setConfirmDelete(null);
+    } else if (confirmDelete.kind === 'notification') {
+      setNotifications((prev) => prev.filter((n) => n.id !== confirmDelete.id));
+      showToast('Notification deleted', 'error');
+      setConfirmDelete(null);
+    } else if (confirmDelete.kind === 'allNotifications') {
+      setNotifications([]);
+      showToast('All notifications cleared', 'error');
+      setConfirmDelete(null);
+    }
   };
 
   const hasFilters = searchQuery || statusFilter !== 'All' || priorityFilter !== 'All';
@@ -301,6 +377,13 @@ export default function Tasks() {
   };
 
   const unreadNotifs = notifications.filter((n) => !n.read).length;
+
+  /* Tab counts */
+  const tabCounts = {
+    tasks: tasks.length,
+    reminders: reminders.length,
+    notifications: notifications.length,
+  };
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#FDF8FE] via-white to-[#FBF3FF]">
@@ -330,7 +413,7 @@ export default function Tasks() {
             )}
             {tab === 'reminders' && (
               <button
-                onClick={() => setShowReminderModal(true)}
+                onClick={() => { setEditingReminder(null); setShowReminderModal(true); }}
                 className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-4 py-2 text-xs font-semibold text-white shadow-[0_6px_18px_-6px_rgba(227,28,121,0.6)] transition-all hover:-translate-y-0.5 hover:brightness-110"
               >
                 <Plus size={14} className="transition-transform group-hover:rotate-90" /> New Reminder
@@ -357,16 +440,69 @@ export default function Tasks() {
                 <h2 className="font-display text-sm font-semibold text-brand-ink">Live Snapshot</h2>
               </div>
             </div>
-            <p className="text-[11px] text-brand-ink/40">Click a card to switch tab</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <KpiCard icon={Layers}         label="Total Tasks"       value={summary.total}             sub={`${summary.completion}% completion`} color="purple" active={tab === 'tasks'}         onClick={() => setTab('tasks')}         delay={0} />
-            <KpiCard icon={Timer}          label="In Progress"       value={summary.inProgress}        sub={`${summary.pending} pending`}          color="emerald" active={false}                 onClick={() => setTab('tasks')}         delay={40} />
-            <KpiCard icon={AlertTriangle}  label="Overdue"           value={summary.overdue}           sub="Needs attention"                        color="rose"   active={false}                 onClick={() => setTab('tasks')}         delay={80} />
-            <KpiCard icon={Flag}           label="Urgent"            value={summary.urgent}            sub="High priority"                          color="amber"  active={false}                 onClick={() => setTab('tasks')}         delay={120} />
-            <KpiCard icon={Bell}           label="Upcoming Reminders" value={summary.upcomingReminders} sub="Scheduled"                            color="purple" active={tab === 'reminders'}   onClick={() => setTab('reminders')}     delay={160} />
-            <KpiCard icon={Zap}            label="Unread Alerts"     value={summary.unreadNotifs}      sub="Notifications"                          color="rose"   active={tab === 'notifications'} onClick={() => setTab('notifications')} delay={200} />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <KpiCard
+              icon={Layers}
+              label="Total Tasks"
+              value={summary.total}
+              sub={`${summary.completion}% completion`}
+              color="purple"
+              active={tab === 'tasks'}
+              onClick={() => setTab('tasks')}
+              delay={0}
+            />
+            <KpiCard
+              icon={Timer}
+              label="In Progress"
+              value={summary.inProgress}
+              sub={`${summary.pending} pending`}
+              color="emerald"
+              active={tab === 'tasks' && statusFilter === 'In Progress'}
+              onClick={() => { setTab('tasks'); setStatusFilter('In Progress'); }}
+              delay={40}
+            />
+            <KpiCard
+              icon={AlertTriangle}
+              label="Overdue"
+              value={summary.overdue}
+              sub="Needs attention"
+              color="rose"
+              active={false}
+              onClick={() => { setTab('tasks'); setStatusFilter('All'); }}
+              delay={80}
+            />
+            <KpiCard
+              icon={Flag}
+              label="Urgent"
+              value={summary.urgent}
+              sub="High priority"
+              color="amber"
+              active={tab === 'tasks' && priorityFilter === 'Urgent'}
+              onClick={() => { setTab('tasks'); setPriorityFilter('Urgent'); }}
+              delay={120}
+            />
+            <KpiCard
+              icon={Bell}
+              label="Upcoming Reminders"
+              value={summary.upcomingReminders}
+              sub="Scheduled"
+              color="purple"
+              active={tab === 'reminders'}
+              onClick={() => setTab('reminders')}
+              delay={160}
+            />
+            <KpiCard
+              icon={Zap}
+              label="Unread Alerts"
+              value={summary.unreadNotifs}
+              sub="Notifications"
+              color="rose"
+              active={tab === 'notifications'}
+              onClick={() => setTab('notifications')}
+              delay={200}
+            />
           </div>
         </div>
 
@@ -375,12 +511,17 @@ export default function Tasks() {
           <div className="flex flex-wrap items-center gap-1">
             {TABS.map(({ key, label, icon: Icon }) => {
               const active = tab === key;
-              const count = key === 'tasks' ? tasks.length : key === 'reminders' ? reminders.length : notifications.length;
+              const count = tabCounts[key];
               const badge = key === 'notifications' && unreadNotifs > 0 ? unreadNotifs : null;
               return (
                 <button
                   key={key}
-                  onClick={() => { setTab(key); setSearchQuery(''); setStatusFilter('All'); setPriorityFilter('All'); }}
+                  onClick={() => {
+                    setTab(key);
+                    setSearchQuery('');
+                    setStatusFilter('All');
+                    setPriorityFilter('All');
+                  }}
                   className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all ${
                     active
                       ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)] scale-[1.02]'
@@ -389,7 +530,15 @@ export default function Tasks() {
                 >
                   <Icon size={13} />
                   {label}
-                  <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${active ? 'bg-white/25 text-white' : badge ? 'bg-brand-magenta text-white' : 'bg-brand-lilac/70 text-brand-purple'}`}>
+                  <span
+                    className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                      active
+                        ? 'bg-white/25 text-white'
+                        : badge
+                        ? 'bg-brand-magenta text-white'
+                        : 'bg-brand-lilac/70 text-brand-purple'
+                    }`}
+                  >
                     {badge || count}
                   </span>
                 </button>
@@ -410,29 +559,64 @@ export default function Tasks() {
                 className="w-full rounded-full border border-brand-lilac bg-white py-2.5 pl-11 pr-10 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-brand-lilac">
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-brand-lilac"
+                >
                   <X size={14} className="text-brand-ink/50" />
                 </button>
               )}
             </div>
 
             <DropdownFilter
-              label="Status" icon={ListFilter} value={statusFilter}
+              label="Status"
+              icon={ListFilter}
+              value={statusFilter}
               options={['All', ...TASK_STATUSES]}
               open={statusOpen}
               onToggle={() => { setStatusOpen((s) => !s); setPriorityOpen(false); }}
               onChange={(v) => { setStatusFilter(v); setStatusOpen(false); }}
             />
             <DropdownFilter
-              label="Priority" icon={Flag} value={priorityFilter}
+              label="Priority"
+              icon={Flag}
+              value={priorityFilter}
               options={['All', ...PRIORITIES]}
               open={priorityOpen}
               onToggle={() => { setPriorityOpen((s) => !s); setStatusOpen(false); }}
               onChange={(v) => { setPriorityFilter(v); setPriorityOpen(false); }}
             />
 
+            <div className="flex items-center gap-1 rounded-full border border-brand-lilac bg-white p-1">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`rounded-full p-1.5 transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-brand-magenta/10 text-brand-magenta'
+                    : 'text-brand-ink/50 hover:bg-brand-lilac/30'
+                }`}
+                title="List view"
+              >
+                <List size={14} />
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`rounded-full p-1.5 transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-brand-magenta/10 text-brand-magenta'
+                    : 'text-brand-ink/50 hover:bg-brand-lilac/30'
+                }`}
+                title="Grid view"
+              >
+                <Grid3x3 size={14} />
+              </button>
+            </div>
+
             {hasFilters && (
-              <button onClick={clearFilters} className="flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-500 hover:bg-rose-100">
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-500 hover:bg-rose-100"
+              >
                 <X size={12} /> Clear
               </button>
             )}
@@ -443,12 +627,14 @@ export default function Tasks() {
         {tab === 'tasks' && (
           <TasksTab
             tasks={filteredTasks}
+            viewMode={viewMode}
             hasFilters={hasFilters}
             onClear={clearFilters}
             onView={setViewingTask}
             onEdit={(t) => { setEditingTask(t); setShowTaskModal(true); }}
-            onDelete={(t) => setConfirmDelete(t)}
+            onDelete={(t) => setConfirmDelete({ kind: 'task', id: t.id, title: t.title })}
             onComplete={(t) => handleCompleteTask(t.id)}
+            onReopen={(t) => handleReopenTask(t.id)}
             onCreate={() => { setEditingTask(null); setShowTaskModal(true); }}
           />
         )}
@@ -456,8 +642,11 @@ export default function Tasks() {
         {tab === 'reminders' && (
           <RemindersTab
             reminders={reminders}
-            onCreate={() => setShowReminderModal(true)}
+            onCreate={() => { setEditingReminder(null); setShowReminderModal(true); }}
+            onEdit={(r) => { setEditingReminder(r); setShowReminderModal(true); }}
+            onView={setViewingReminder}
             onComplete={handleCompleteReminder}
+            onReopen={handleReopenReminder}
             onDelete={handleDeleteReminder}
           />
         )}
@@ -467,7 +656,9 @@ export default function Tasks() {
             notifications={notifications}
             unreadCount={unreadNotifs}
             onCreate={() => setShowNotificationModal(true)}
+            onView={setViewingNotification}
             onMarkRead={handleMarkRead}
+            onMarkUnread={handleMarkUnread}
             onMarkAllRead={handleMarkAllRead}
             onDelete={handleDeleteNotification}
             onClearAll={handleClearAllNotifications}
@@ -480,8 +671,11 @@ export default function Tasks() {
             mode={editingTask ? 'edit' : 'create'}
             initial={editingTask || {}}
             agents={agents}
+            currentUser={user}
             onClose={() => { setShowTaskModal(false); setEditingTask(null); }}
-            onSubmit={(data) => (editingTask ? handleEditTask(editingTask.id, data) : handleCreateTask(data))}
+            onSubmit={(data) =>
+              editingTask ? handleEditTask(editingTask.id, data) : handleCreateTask(data)
+            }
           />
         )}
 
@@ -489,16 +683,47 @@ export default function Tasks() {
           <TaskDetailsDrawer
             task={viewingTask}
             onClose={() => setViewingTask(null)}
-            onEdit={() => { setEditingTask(viewingTask); setViewingTask(null); setShowTaskModal(true); }}
-            onComplete={() => { handleCompleteTask(viewingTask.id); setViewingTask(null); }}
+            onEdit={() => {
+              setEditingTask(viewingTask);
+              setViewingTask(null);
+              setShowTaskModal(true);
+            }}
+            onComplete={() => {
+              handleCompleteTask(viewingTask.id);
+              setViewingTask(null);
+            }}
+            onReopen={() => {
+              handleReopenTask(viewingTask.id);
+              setViewingTask(null);
+            }}
           />
         )}
 
         {showReminderModal && (
           <ReminderModal
+            mode={editingReminder ? 'edit' : 'create'}
+            initial={editingReminder || {}}
             agents={agents}
-            onClose={() => setShowReminderModal(false)}
-            onSubmit={handleCreateReminder}
+            onClose={() => { setShowReminderModal(false); setEditingReminder(null); }}
+            onSubmit={(data) =>
+              editingReminder ? handleEditReminder(editingReminder.id, data) : handleCreateReminder(data)
+            }
+          />
+        )}
+
+        {viewingReminder && (
+          <ReminderDetailsDrawer
+            reminder={viewingReminder}
+            onClose={() => setViewingReminder(null)}
+            onEdit={() => {
+              setEditingReminder(viewingReminder);
+              setViewingReminder(null);
+              setShowReminderModal(true);
+            }}
+            onComplete={() => {
+              handleCompleteReminder(viewingReminder.id);
+              setViewingReminder(null);
+            }}
           />
         )}
 
@@ -510,13 +735,48 @@ export default function Tasks() {
           />
         )}
 
+        {viewingNotification && (
+          <NotificationDetailsDrawer
+            notification={viewingNotification}
+            onClose={() => setViewingNotification(null)}
+            onMarkRead={() => {
+              handleMarkRead(viewingNotification.id);
+              setViewingNotification((prev) => (prev ? { ...prev, read: true } : prev));
+            }}
+            onMarkUnread={() => {
+              handleMarkUnread(viewingNotification.id);
+              setViewingNotification((prev) => (prev ? { ...prev, read: false } : prev));
+            }}
+          />
+        )}
+
         {confirmDelete && (
           <ConfirmDialog
-            title="Delete task?"
-            message={`This will permanently delete "${confirmDelete.title}". This action cannot be undone.`}
-            confirmLabel="Delete Task"
+            title={
+              confirmDelete.kind === 'reminder'
+                ? 'Delete reminder?'
+                : confirmDelete.kind === 'notification'
+                ? 'Delete notification?'
+                : confirmDelete.kind === 'allNotifications'
+                ? 'Clear all notifications?'
+                : 'Delete task?'
+            }
+            message={
+              confirmDelete.kind === 'allNotifications'
+                ? 'This will permanently remove all notifications. This action cannot be undone.'
+                : `This will permanently delete "${confirmDelete.title}". This action cannot be undone.`
+            }
+            confirmLabel={
+              confirmDelete.kind === 'reminder'
+                ? 'Delete Reminder'
+                : confirmDelete.kind === 'notification'
+                ? 'Delete Notification'
+                : confirmDelete.kind === 'allNotifications'
+                ? 'Clear All'
+                : 'Delete Task'
+            }
             onCancel={() => setConfirmDelete(null)}
-            onConfirm={() => handleDeleteTask(confirmDelete.id)}
+            onConfirm={performDelete}
           />
         )}
 
@@ -619,7 +879,11 @@ function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onC
               <button
                 key={o}
                 onClick={() => onChange(o)}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm ${value === o ? 'bg-brand-magenta/10 font-semibold text-brand-magenta' : 'text-brand-ink/70 hover:bg-brand-lilac/40'}`}
+                className={`w-full rounded-lg px-3 py-2 text-left text-sm ${
+                  value === o
+                    ? 'bg-brand-magenta/10 font-semibold text-brand-magenta'
+                    : 'text-brand-ink/70 hover:bg-brand-lilac/40'
+                }`}
               >
                 {o}
               </button>
@@ -634,7 +898,7 @@ function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onC
 /* ═══════════════════════════════════════════════════════════════
    TASKS TAB
    ═══════════════════════════════════════════════════════════════ */
-function TasksTab({ tasks, hasFilters, onClear, onView, onEdit, onDelete, onComplete, onCreate }) {
+function TasksTab({ tasks, viewMode, hasFilters, onClear, onView, onEdit, onDelete, onComplete, onReopen, onCreate }) {
   if (tasks.length === 0) {
     return (
       <div className="card flex flex-col items-center gap-3 py-16 text-center">
@@ -667,99 +931,274 @@ function TasksTab({ tasks, hasFilters, onClear, onView, onEdit, onDelete, onComp
 
   const todayStr = today();
 
+  if (viewMode === 'grid') {
+    return (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {tasks.map((t) => (
+          <TaskCard
+            key={t.id}
+            task={t}
+            todayStr={todayStr}
+            onView={() => onView(t)}
+            onEdit={() => onEdit(t)}
+            onDelete={() => onDelete(t)}
+            onComplete={() => onComplete(t)}
+            onReopen={() => onReopen(t)}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
-      {tasks.map((t) => {
-        const isOverdue = t.status !== 'Completed' && t.status !== 'Cancelled' && t.dueDate < todayStr;
-        const isCompleted = t.status === 'Completed';
-        const isCancelled = t.status === 'Cancelled';
-        const isUrgent = t.priority === 'Urgent';
+      {tasks.map((t) => (
+        <TaskRow
+          key={t.id}
+          task={t}
+          todayStr={todayStr}
+          onView={() => onView(t)}
+          onEdit={() => onEdit(t)}
+          onDelete={() => onDelete(t)}
+          onComplete={() => onComplete(t)}
+          onReopen={() => onReopen(t)}
+        />
+      ))}
+    </div>
+  );
+}
 
-        return (
-          <div
-            key={t.id}
-            className={`group relative flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border-2 bg-white px-4 py-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md sm:flex-nowrap ${
-              isOverdue ? 'border-rose-200 hover:border-rose-300'
-              : isCompleted ? 'border-emerald-200 hover:border-emerald-300'
-              : isUrgent ? 'border-amber-200 hover:border-amber-300'
-              : 'border-brand-lilac/70 hover:border-brand-magenta/40'
-            }`}
-          >
-            {/* Checkbox */}
+/* ── Task Card (GRID) ── */
+function TaskCard({ task: t, todayStr, onView, onEdit, onDelete, onComplete, onReopen }) {
+  const isOverdue = t.status !== 'Completed' && t.status !== 'Cancelled' && t.dueDate < todayStr;
+  const isCompleted = t.status === 'Completed';
+  const isCancelled = t.status === 'Cancelled';
+  const isUrgent = t.priority === 'Urgent';
+
+  const accent = isOverdue
+    ? 'from-rose-500 to-rose-600'
+    : isCompleted
+    ? 'from-emerald-500 to-emerald-600'
+    : isUrgent
+    ? 'from-amber-500 to-orange-500'
+    : 'from-brand-magenta to-brand-purple';
+
+  const borderClass = isOverdue
+    ? 'border-rose-200 hover:border-rose-400'
+    : isCompleted
+    ? 'border-emerald-200 hover:border-emerald-400'
+    : isUrgent
+    ? 'border-amber-200 hover:border-amber-400'
+    : 'border-brand-lilac hover:border-brand-magenta/40';
+
+  return (
+    <div
+      className={`group relative flex flex-col overflow-hidden rounded-2xl border-2 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md ${borderClass}`}
+    >
+      <span className={`pointer-events-none absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${accent} transition-transform duration-500 group-hover:scale-x-100`} />
+      <span className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-brand-magenta/10 opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
+
+      <div className="relative flex items-start gap-3">
+        <button
+          onClick={() => !isCompleted && !isCancelled && onComplete()}
+          disabled={isCompleted || isCancelled}
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 transition-all ${
+            isCompleted
+              ? 'border-emerald-500 bg-emerald-500 text-white'
+              : isCancelled
+              ? 'cursor-not-allowed border-gray-200 bg-gray-100'
+              : 'border-brand-lilac hover:border-brand-magenta hover:bg-brand-magenta/5'
+          }`}
+        >
+          {isCompleted && <Check size={14} />}
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => !isCompleted && !isCancelled && onComplete()}
-              disabled={isCompleted || isCancelled}
-              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 transition-all ${
-                isCompleted ? 'border-emerald-500 bg-emerald-500 text-white'
-                : isCancelled ? 'cursor-not-allowed border-gray-200 bg-gray-100'
-                : 'border-brand-lilac hover:border-brand-magenta hover:bg-brand-magenta/5'
+              onClick={onView}
+              className={`truncate text-left text-sm font-semibold hover:text-brand-magenta ${
+                isCompleted || isCancelled ? 'text-brand-ink/50 line-through' : 'text-brand-ink'
               }`}
             >
-              {isCompleted && <Check size={14} />}
+              {t.title}
             </button>
-
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => onView(t)}
-                  className={`truncate text-left text-sm font-semibold hover:text-brand-magenta ${
-                    isCompleted || isCancelled ? 'text-brand-ink/50 line-through' : 'text-brand-ink'
-                  }`}
-                >
-                  {t.title}
-                </button>
-                {isOverdue && (
-                  <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-600">
-                    OVERDUE
-                  </span>
-                )}
-              </div>
-              <p className="truncate text-[11px] text-brand-ink/50">{t.description}</p>
-            </div>
-
-            <div className="hidden shrink-0 text-xs md:block">
-              <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink/40">Assigned</p>
-              <p className="truncate font-semibold text-brand-ink/70">{t.assignedTo}</p>
-            </div>
-
-            <div className="hidden shrink-0 text-xs lg:block">
-              <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink/40">Due</p>
-              <p className={`font-semibold tabular-nums ${isOverdue ? 'text-rose-500' : 'text-brand-ink/70'}`}>{t.dueDate}</p>
-            </div>
-
-            <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold ${PRIORITY_STYLES[t.priority] || PRIORITY_STYLES.Medium}`}>
-              {t.priority.toUpperCase()}
-            </span>
-            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${TASK_STATUS_STYLES[t.status] || 'bg-brand-lilac text-brand-purple'}`}>
-              {t.status.toUpperCase()}
-            </span>
-
-            <div className="flex shrink-0 items-center gap-1.5">
-              <button
-                onClick={() => onView(t)}
-                className="hidden h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta sm:flex"
-                title="View"
-              >
-                <Eye size={13} />
-              </button>
-              <button
-                onClick={() => onEdit(t)}
-                className="hidden h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta sm:flex"
-                title="Edit"
-              >
-                <Pencil size={13} />
-              </button>
-              <button
-                onClick={() => onDelete(t)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-500 transition-all hover:bg-rose-50"
-                title="Delete"
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
+            {isOverdue && (
+              <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-600">
+                OVERDUE
+              </span>
+            )}
           </div>
-        );
-      })}
+          <p className="mt-1 line-clamp-2 text-[11px] text-brand-ink/50">{t.description}</p>
+        </div>
+      </div>
+
+      <div className="relative mt-3 flex flex-wrap items-center gap-1.5">
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${PRIORITY_STYLES[t.priority] || PRIORITY_STYLES.Medium}`}>
+          {t.priority.toUpperCase()}
+        </span>
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${TASK_STATUS_STYLES[t.status] || 'bg-brand-lilac text-brand-purple'}`}>
+          {t.status.toUpperCase()}
+        </span>
+      </div>
+
+      <div className="relative mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-lg bg-brand-mist/60 px-2.5 py-2">
+          <p className="font-mono text-[9px] uppercase tracking-wider text-brand-ink/40">Assigned</p>
+          <p className="truncate text-xs font-semibold text-brand-ink/80">{t.assignedTo}</p>
+        </div>
+        <div className="rounded-lg bg-brand-mist/60 px-2.5 py-2">
+          <p className="font-mono text-[9px] uppercase tracking-wider text-brand-ink/40">Due</p>
+          <p className={`truncate text-xs font-semibold tabular-nums ${isOverdue ? 'text-rose-500' : 'text-brand-ink/80'}`}>
+            {t.dueDate}
+          </p>
+        </div>
+      </div>
+
+      <div className="relative mt-4 flex gap-1.5">
+        {!isCompleted && !isCancelled && (
+          <button
+            onClick={onComplete}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-2 text-xs font-semibold text-white shadow-card transition-all hover:brightness-110"
+          >
+            <Check size={12} /> Complete
+          </button>
+        )}
+        {(isCompleted || isCancelled) && (
+          <button
+            onClick={onReopen}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white py-2 text-xs font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+          >
+            <RotateCcw size={12} /> Reopen
+          </button>
+        )}
+        <button
+          onClick={onView}
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+          title="View"
+        >
+          <Eye size={13} />
+        </button>
+        <button
+          onClick={onEdit}
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+          title="Edit"
+        >
+          <Pencil size={13} />
+        </button>
+        <button
+          onClick={onDelete}
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-500 transition-all hover:bg-rose-50"
+          title="Delete"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Task Row (LIST) ── */
+function TaskRow({ task: t, todayStr, onView, onEdit, onDelete, onComplete, onReopen }) {
+  const isOverdue = t.status !== 'Completed' && t.status !== 'Cancelled' && t.dueDate < todayStr;
+  const isCompleted = t.status === 'Completed';
+  const isCancelled = t.status === 'Cancelled';
+  const isUrgent = t.priority === 'Urgent';
+
+  return (
+    <div
+      className={`group relative flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border-2 bg-white px-4 py-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md sm:flex-nowrap ${
+        isOverdue
+          ? 'border-rose-200 hover:border-rose-300'
+          : isCompleted
+          ? 'border-emerald-200 hover:border-emerald-300'
+          : isUrgent
+          ? 'border-amber-200 hover:border-amber-300'
+          : 'border-brand-lilac/70 hover:border-brand-magenta/40'
+      }`}
+    >
+      <button
+        onClick={() => !isCompleted && !isCancelled && onComplete()}
+        disabled={isCompleted || isCancelled}
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 transition-all ${
+          isCompleted
+            ? 'border-emerald-500 bg-emerald-500 text-white'
+            : isCancelled
+            ? 'cursor-not-allowed border-gray-200 bg-gray-100'
+            : 'border-brand-lilac hover:border-brand-magenta hover:bg-brand-magenta/5'
+        }`}
+      >
+        {isCompleted && <Check size={14} />}
+      </button>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={onView}
+            className={`truncate text-left text-sm font-semibold hover:text-brand-magenta ${
+              isCompleted || isCancelled ? 'text-brand-ink/50 line-through' : 'text-brand-ink'
+            }`}
+          >
+            {t.title}
+          </button>
+          {isOverdue && (
+            <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[9px] font-bold text-rose-600">
+              OVERDUE
+            </span>
+          )}
+        </div>
+        <p className="truncate text-[11px] text-brand-ink/50">{t.description}</p>
+      </div>
+
+      <div className="hidden shrink-0 text-xs md:block">
+        <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink/40">Assigned</p>
+        <p className="truncate font-semibold text-brand-ink/70">{t.assignedTo}</p>
+      </div>
+
+      <div className="hidden shrink-0 text-xs lg:block">
+        <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink/40">Due</p>
+        <p className={`font-semibold tabular-nums ${isOverdue ? 'text-rose-500' : 'text-brand-ink/70'}`}>{t.dueDate}</p>
+      </div>
+
+      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold ${PRIORITY_STYLES[t.priority] || PRIORITY_STYLES.Medium}`}>
+        {t.priority.toUpperCase()}
+      </span>
+      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${TASK_STATUS_STYLES[t.status] || 'bg-brand-lilac text-brand-purple'}`}>
+        {t.status.toUpperCase()}
+      </span>
+
+      <div className="flex shrink-0 items-center gap-1.5">
+        {(isCompleted || isCancelled) && (
+          <button
+            onClick={onReopen}
+            className="hidden h-8 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-[11px] font-semibold text-brand-purple hover:bg-violet-100 sm:inline-flex"
+            title="Reopen"
+          >
+            <RotateCcw size={11} /> Reopen
+          </button>
+        )}
+        <button
+          onClick={onView}
+          className="hidden h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta sm:flex"
+          title="View"
+        >
+          <Eye size={13} />
+        </button>
+        <button
+          onClick={onEdit}
+          className="hidden h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta sm:flex"
+          title="Edit"
+        >
+          <Pencil size={13} />
+        </button>
+        <button
+          onClick={onDelete}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-500 transition-all hover:bg-rose-50"
+          title="Delete"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -767,7 +1206,7 @@ function TasksTab({ tasks, hasFilters, onClear, onView, onEdit, onDelete, onComp
 /* ═══════════════════════════════════════════════════════════════
    REMINDERS TAB
    ═══════════════════════════════════════════════════════════════ */
-function RemindersTab({ reminders, onCreate, onComplete, onDelete }) {
+function RemindersTab({ reminders, onCreate, onEdit, onView, onComplete, onReopen, onDelete }) {
   const upcoming = reminders.filter((r) => r.status === 'Upcoming');
   const completed = reminders.filter((r) => r.status === 'Completed');
 
@@ -793,55 +1232,87 @@ function RemindersTab({ reminders, onCreate, onComplete, onDelete }) {
 
   return (
     <div className="space-y-5">
-      {/* Upcoming section */}
       {upcoming.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <span className="h-5 w-1 rounded-full bg-gradient-to-b from-brand-magenta to-brand-purple" />
             <div>
               <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-brand-magenta">Upcoming</p>
-              <h3 className="font-display text-sm font-semibold text-brand-ink">{upcoming.length} reminder{upcoming.length !== 1 ? 's' : ''}</h3>
+              <h3 className="font-display text-sm font-semibold text-brand-ink">
+                {upcoming.length} reminder{upcoming.length !== 1 ? 's' : ''}
+              </h3>
             </div>
           </div>
-          {upcoming.map((r) => <ReminderRow key={r.id} reminder={r} onComplete={onComplete} onDelete={onDelete} />)}
+          {upcoming.map((r) => (
+            <ReminderRow
+              key={r.id}
+              reminder={r}
+              onView={() => onView(r)}
+              onEdit={() => onEdit(r)}
+              onComplete={() => onComplete(r.id)}
+              onDelete={() => onDelete(r.id)}
+            />
+          ))}
         </div>
       )}
 
-      {/* Completed section */}
       {completed.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <span className="h-5 w-1 rounded-full bg-emerald-400" />
             <div>
               <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-emerald-600">Completed</p>
-              <h3 className="font-display text-sm font-semibold text-brand-ink">{completed.length} reminder{completed.length !== 1 ? 's' : ''}</h3>
+              <h3 className="font-display text-sm font-semibold text-brand-ink">
+                {completed.length} reminder{completed.length !== 1 ? 's' : ''}
+              </h3>
             </div>
           </div>
-          {completed.map((r) => <ReminderRow key={r.id} reminder={r} onComplete={onComplete} onDelete={onDelete} />)}
+          {completed.map((r) => (
+            <ReminderRow
+              key={r.id}
+              reminder={r}
+              onView={() => onView(r)}
+              onEdit={() => onEdit(r)}
+              onComplete={() => onComplete(r.id)}
+              onReopen={() => onReopen(r.id)}
+              onDelete={() => onDelete(r.id)}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function ReminderRow({ reminder: r, onComplete, onDelete }) {
+function ReminderRow({ reminder: r, onView, onEdit, onComplete, onReopen, onDelete }) {
   const config = REMINDER_TYPES.find((t) => t.key === r.type) || REMINDER_TYPES[0];
   const Icon = config.icon;
   const tone = TONE_CLASSES[config.tone];
   const isCompleted = r.status === 'Completed';
 
   return (
-    <div className={`group flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border-2 bg-white px-4 py-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md sm:flex-nowrap ${
-      isCompleted ? 'border-emerald-200' : 'border-brand-lilac/70 hover:border-brand-magenta/40'
-    }`}>
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isCompleted ? 'bg-emerald-100 text-emerald-600' : tone.icon}`}>
+    <div
+      className={`group flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border-2 bg-white px-4 py-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md sm:flex-nowrap ${
+        isCompleted ? 'border-emerald-200' : 'border-brand-lilac/70 hover:border-brand-magenta/40'
+      }`}
+    >
+      <button
+        onClick={onView}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isCompleted ? 'bg-emerald-100 text-emerald-600' : tone.icon} transition-transform hover:scale-110`}
+        title="View details"
+      >
         {isCompleted ? <CheckCircle2 size={16} /> : <Icon size={16} />}
-      </span>
+      </button>
 
       <div className="min-w-0 flex-1">
-        <p className={`truncate text-sm font-semibold ${isCompleted ? 'text-brand-ink/50 line-through' : 'text-brand-ink'}`}>
+        <button
+          onClick={onView}
+          className={`block truncate text-left text-sm font-semibold hover:text-brand-magenta ${
+            isCompleted ? 'text-brand-ink/50 line-through' : 'text-brand-ink'
+          }`}
+        >
           {r.title}
-        </p>
+        </button>
         <p className="truncate text-[11px] text-brand-ink/50">
           {r.time} {r.assignedTo && `· ${r.assignedTo}`}
         </p>
@@ -851,24 +1322,42 @@ function ReminderRow({ reminder: r, onComplete, onDelete }) {
         {config.label}
       </span>
 
-      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-        isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
-      }`}>
+      <span
+        className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+          isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+        }`}
+      >
         {r.status}
       </span>
 
       <div className="flex shrink-0 items-center gap-1.5">
         {!isCompleted && (
           <button
-            onClick={() => onComplete(r.id)}
+            onClick={onComplete}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-[11px] font-semibold text-brand-purple hover:bg-violet-100"
           >
             <Check size={12} /> Done
           </button>
         )}
+        {isCompleted && onReopen && (
+          <button
+            onClick={onReopen}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-[11px] font-semibold text-brand-purple hover:bg-violet-100"
+          >
+            <RotateCcw size={12} /> Reopen
+          </button>
+        )}
         <button
-          onClick={() => onDelete(r.id)}
+          onClick={onEdit}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+          title="Edit"
+        >
+          <Pencil size={13} />
+        </button>
+        <button
+          onClick={onDelete}
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-500 hover:bg-rose-50"
+          title="Delete"
         >
           <Trash2 size={13} />
         </button>
@@ -880,7 +1369,7 @@ function ReminderRow({ reminder: r, onComplete, onDelete }) {
 /* ═══════════════════════════════════════════════════════════════
    NOTIFICATIONS TAB
    ═══════════════════════════════════════════════════════════════ */
-function NotificationsTab({ notifications, unreadCount, onCreate, onMarkRead, onMarkAllRead, onDelete, onClearAll }) {
+function NotificationsTab({ notifications, unreadCount, onCreate, onView, onMarkRead, onMarkUnread, onMarkAllRead, onDelete, onClearAll }) {
   const unread = notifications.filter((n) => !n.read);
   const read = notifications.filter((n) => n.read);
 
@@ -906,10 +1395,10 @@ function NotificationsTab({ notifications, unreadCount, onCreate, onMarkRead, on
 
   return (
     <div className="space-y-5">
-      {/* Action bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-brand-ink/60">
-          <strong className="text-brand-ink">{notifications.length}</strong> notification{notifications.length !== 1 ? 's' : ''} · <strong className="text-brand-magenta">{unreadCount}</strong> unread
+          <strong className="text-brand-ink">{notifications.length}</strong> notification{notifications.length !== 1 ? 's' : ''} ·{' '}
+          <strong className="text-brand-magenta">{unreadCount}</strong> unread
         </p>
         <div className="flex items-center gap-2">
           {unreadCount > 0 && (
@@ -938,7 +1427,15 @@ function NotificationsTab({ notifications, unreadCount, onCreate, onMarkRead, on
               <h3 className="font-display text-sm font-semibold text-brand-ink">{unread.length} new</h3>
             </div>
           </div>
-          {unread.map((n) => <NotificationRow key={n.id} notification={n} onMarkRead={onMarkRead} onDelete={onDelete} />)}
+          {unread.map((n) => (
+            <NotificationRow
+              key={n.id}
+              notification={n}
+              onView={() => onView(n)}
+              onMarkRead={onMarkRead}
+              onDelete={onDelete}
+            />
+          ))}
         </div>
       )}
 
@@ -951,23 +1448,37 @@ function NotificationsTab({ notifications, unreadCount, onCreate, onMarkRead, on
               <h3 className="font-display text-sm font-semibold text-brand-ink">{read.length} archived</h3>
             </div>
           </div>
-          {read.map((n) => <NotificationRow key={n.id} notification={n} onMarkRead={onMarkRead} onDelete={onDelete} />)}
+          {read.map((n) => (
+            <NotificationRow
+              key={n.id}
+              notification={n}
+              onView={() => onView(n)}
+              onMarkUnread={onMarkUnread}
+              onDelete={onDelete}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function NotificationRow({ notification: n, onMarkRead, onDelete }) {
+function NotificationRow({ notification: n, onView, onMarkRead, onMarkUnread, onDelete }) {
   const config = NOTIFICATION_TYPES.find((t) => t.key === n.type) || NOTIFICATION_TYPES[0];
   const Icon = config.icon;
   const tone = TONE_CLASSES[config.tone];
 
   return (
-    <div className={`group flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border-2 bg-white px-4 py-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md sm:flex-nowrap ${
-      n.read ? 'border-brand-lilac/60' : 'border-brand-magenta/40 bg-brand-magenta/[0.03]'
-    }`}>
-      <span className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone.icon}`}>
+    <div
+      className={`group flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border-2 bg-white px-4 py-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md sm:flex-nowrap ${
+        n.read ? 'border-brand-lilac/60' : 'border-brand-magenta/40 bg-brand-magenta/[0.03]'
+      }`}
+    >
+      <button
+        onClick={onView}
+        className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone.icon} transition-transform hover:scale-110`}
+        title="View details"
+      >
         <Icon size={16} />
         {!n.read && (
           <span className="absolute -right-0.5 -top-0.5 flex h-2.5 w-2.5">
@@ -975,23 +1486,23 @@ function NotificationRow({ notification: n, onMarkRead, onDelete }) {
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand-magenta" />
           </span>
         )}
-      </span>
+      </button>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-brand-ink">{n.title}</p>
+      <button onClick={onView} className="min-w-0 flex-1 text-left">
+        <p className="truncate text-sm font-semibold text-brand-ink hover:text-brand-magenta">{n.title}</p>
         <p className="truncate text-[11px] text-brand-ink/60">{n.body}</p>
-      </div>
+      </button>
 
       <span className={`hidden shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider lg:inline-block ${tone.chip}`}>
         {config.label}
       </span>
 
       <span className="hidden shrink-0 font-mono text-[10px] text-brand-ink/40 sm:block">
-        {n.createdAt ? formatRelative(n.createdAt) : n.time}
+        {n.createdAt ? formatRelative(n.createdAt) : n.time || ''}
       </span>
 
       <div className="flex shrink-0 items-center gap-1.5">
-        {!n.read && (
+        {!n.read && onMarkRead && (
           <button
             onClick={() => onMarkRead(n.id)}
             className="rounded-lg border border-brand-purple/40 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-brand-purple hover:bg-brand-lilac/40"
@@ -999,12 +1510,18 @@ function NotificationRow({ notification: n, onMarkRead, onDelete }) {
             Mark read
           </button>
         )}
-        {n.read && (
-          <span className="rounded-full bg-brand-lilac/40 px-2.5 py-1 text-[10px] font-semibold text-brand-ink/50">Read</span>
+        {n.read && onMarkUnread && (
+          <button
+            onClick={() => onMarkUnread(n.id)}
+            className="rounded-lg border border-brand-lilac bg-white px-2.5 py-1.5 text-[10px] font-semibold text-brand-ink/60 hover:bg-brand-lilac/40"
+          >
+            Mark unread
+          </button>
         )}
         <button
           onClick={() => onDelete(n.id)}
           className="flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-500 hover:bg-rose-50"
+          title="Delete"
         >
           <Trash2 size={11} />
         </button>
@@ -1016,13 +1533,14 @@ function NotificationRow({ notification: n, onMarkRead, onDelete }) {
 /* ═══════════════════════════════════════════════════════════════
    TASK MODAL
    ═══════════════════════════════════════════════════════════════ */
-function TaskModal({ mode = 'create', initial = {}, agents, onClose, onSubmit }) {
+function TaskModal({ mode = 'create', initial = {}, agents, currentUser, onClose, onSubmit }) {
   const isEdit = mode === 'edit';
-  const { user } = useAuth();
+  const defaultAssignee = currentUser?.name || 'Admin';
+
   const [form, setForm] = useState({
     title: initial.title || '',
     description: initial.description || '',
-    assignedTo: initial.assignedTo || user?.name || 'Admin',
+    assignedTo: initial.assignedTo || defaultAssignee,
     dueDate: initial.dueDate || new Date(Date.now() + 86400000).toISOString().slice(0, 10),
     priority: initial.priority || 'Medium',
     status: initial.status || 'Pending',
@@ -1058,7 +1576,12 @@ function TaskModal({ mode = 'create', initial = {}, agents, onClose, onSubmit })
       iconTone="purple"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Task Title *" value={form.title} onChange={(v) => { setForm({ ...form, title: v }); setError(''); }} placeholder="e.g. Review Q3 lead quality" />
+        <Field
+          label="Task Title *"
+          value={form.title}
+          onChange={(v) => { setForm({ ...form, title: v }); setError(''); }}
+          placeholder="e.g. Review Q3 lead quality"
+        />
         <div>
           <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Description</label>
           <textarea
@@ -1078,13 +1601,22 @@ function TaskModal({ mode = 'create', initial = {}, agents, onClose, onSubmit })
               onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}
               className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
             >
-              <option value={user?.name || 'Admin'}>{user?.name || 'Admin'} (Me)</option>
-              {agents.map((a) => (
-                <option key={a.id} value={a.name}>{a.name}</option>
-              ))}
+              <option value={defaultAssignee}>{defaultAssignee} (Me)</option>
+              {agents
+                .filter((a) => a.name !== defaultAssignee)
+                .map((a) => (
+                  <option key={a.id} value={a.name}>
+                    {a.name}
+                  </option>
+                ))}
             </select>
           </div>
-          <Field label="Due Date *" type="date" value={form.dueDate} onChange={(v) => { setForm({ ...form, dueDate: v }); setError(''); }} />
+          <Field
+            label="Due Date *"
+            type="date"
+            value={form.dueDate}
+            onChange={(v) => { setForm({ ...form, dueDate: v }); setError(''); }}
+          />
         </div>
 
         <div>
@@ -1136,7 +1668,11 @@ function TaskModal({ mode = 'create', initial = {}, agents, onClose, onSubmit })
         )}
 
         <div className="flex gap-2 pt-2">
-          <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+          >
             Cancel
           </button>
           <button
@@ -1153,26 +1689,38 @@ function TaskModal({ mode = 'create', initial = {}, agents, onClose, onSubmit })
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   REMINDER MODAL
+   REMINDER MODAL (create + edit)
    ═══════════════════════════════════════════════════════════════ */
-function ReminderModal({ agents, onClose, onSubmit }) {
+function ReminderModal({ mode = 'create', initial = {}, agents, onClose, onSubmit }) {
+  const isEdit = mode === 'edit';
+
+  /* Parse existing `time` like "2026-10-25 · 14:30" back into date + time */
+  const parseExistingTime = (timeStr) => {
+    if (!timeStr) return { date: '', time: '' };
+    const parts = String(timeStr).split('·').map((s) => s.trim());
+    if (parts.length === 2) return { date: parts[0], time: parts[1] };
+    return { date: parts[0] || '', time: '' };
+  };
+  const parsed = parseExistingTime(initial.time);
+
   const [form, setForm] = useState({
-    title: '',
-    type: 'Call',
-    date: new Date(Date.now() + 3600000).toISOString().slice(0, 10),
-    time: new Date(Date.now() + 3600000).toTimeString().slice(0, 5),
-    assignedTo: agents[0]?.name || 'Admin',
-    notes: '',
+    title: initial.title || '',
+    type: initial.type || 'Call',
+    date: parsed.date || new Date(Date.now() + 3600000).toISOString().slice(0, 10),
+    time: parsed.time || new Date(Date.now() + 3600000).toTimeString().slice(0, 5),
+    assignedTo: initial.assignedTo || agents[0]?.name || 'Admin',
+    notes: initial.notes || '',
   });
   const [error, setError] = useState('');
 
   const handleSubmit = () => {
     if (!form.title.trim()) { setError('Reminder title is required'); return; }
     if (!form.date) { setError('Date is required'); return; }
+    if (!form.time) { setError('Time is required'); return; }
     onSubmit({
       title: form.title.trim(),
       type: form.type,
-      time: `${form.date} · ${form.time}`,
+      time: buildReminderWhen(form.date, form.time),
       date: form.date,
       assignedTo: form.assignedTo,
       notes: form.notes.trim(),
@@ -1181,8 +1729,8 @@ function ReminderModal({ agents, onClose, onSubmit }) {
 
   return (
     <ModalShell
-      title="Create Reminder"
-      subtitle="Set up a call, follow-up, customer, or task reminder"
+      title={isEdit ? 'Edit Reminder' : 'Create Reminder'}
+      subtitle={isEdit ? 'Update reminder details' : 'Set up a call, follow-up, customer, or task reminder'}
       onClose={onClose}
       icon={BellRing}
       iconTone="amber"
@@ -1215,11 +1763,26 @@ function ReminderModal({ agents, onClose, onSubmit }) {
           </div>
         </div>
 
-        <Field label="Reminder Title *" value={form.title} onChange={(v) => { setForm({ ...form, title: v }); setError(''); }} placeholder="e.g. Call Priya about pricing" />
+        <Field
+          label="Reminder Title *"
+          value={form.title}
+          onChange={(v) => { setForm({ ...form, title: v }); setError(''); }}
+          placeholder="e.g. Call Priya about pricing"
+        />
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="Date *" type="date" value={form.date} onChange={(v) => { setForm({ ...form, date: v }); setError(''); }} />
-          <Field label="Time" type="time" value={form.time} onChange={(v) => setForm({ ...form, time: v })} />
+          <Field
+            label="Date *"
+            type="date"
+            value={form.date}
+            onChange={(v) => { setForm({ ...form, date: v }); setError(''); }}
+          />
+          <Field
+            label="Time *"
+            type="time"
+            value={form.time}
+            onChange={(v) => { setForm({ ...form, time: v }); setError(''); }}
+          />
         </div>
 
         <div>
@@ -1254,14 +1817,17 @@ function ReminderModal({ agents, onClose, onSubmit }) {
         )}
 
         <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+          >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110"
           >
-            <Bell size={14} /> Create Reminder
+            <Bell size={14} /> {isEdit ? 'Save Changes' : 'Create Reminder'}
           </button>
         </div>
       </div>
@@ -1330,7 +1896,12 @@ function NotificationModal({ agents, onClose, onSubmit }) {
           </div>
         </div>
 
-        <Field label="Title *" value={form.title} onChange={(v) => { setForm({ ...form, title: v }); setError(''); }} placeholder="e.g. New high-priority lead" />
+        <Field
+          label="Title *"
+          value={form.title}
+          onChange={(v) => { setForm({ ...form, title: v }); setError(''); }}
+          placeholder="e.g. New high-priority lead"
+        />
 
         <div>
           <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Message *</label>
@@ -1377,7 +1948,10 @@ function NotificationModal({ agents, onClose, onSubmit }) {
         )}
 
         <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+          >
             Cancel
           </button>
           <button
@@ -1395,9 +1969,10 @@ function NotificationModal({ agents, onClose, onSubmit }) {
 /* ═══════════════════════════════════════════════════════════════
    TASK DETAILS DRAWER
    ═══════════════════════════════════════════════════════════════ */
-function TaskDetailsDrawer({ task, onClose, onEdit, onComplete }) {
+function TaskDetailsDrawer({ task, onClose, onEdit, onComplete, onReopen }) {
   const isCompleted = task.status === 'Completed';
-  const isOverdue = task.dueDate < today() && !isCompleted && task.status !== 'Cancelled';
+  const isCancelled = task.status === 'Cancelled';
+  const isOverdue = task.dueDate < today() && !isCompleted && !isCancelled;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm">
@@ -1420,9 +1995,21 @@ function TaskDetailsDrawer({ task, onClose, onEdit, onComplete }) {
 
         <div className="space-y-5 p-5">
           <div className="grid grid-cols-3 gap-3">
-            <InfoBox label="Status" value={task.status} color={task.status === 'Completed' ? 'emerald' : task.status === 'In Progress' ? 'purple' : task.status === 'Cancelled' ? 'rose' : 'amber'} />
-            <InfoBox label="Priority" value={task.priority} color={task.priority === 'Urgent' ? 'rose' : task.priority === 'High' ? 'amber' : 'purple'} />
-            <InfoBox label="Due" value={isOverdue ? 'Overdue' : task.dueDate} color={isOverdue ? 'rose' : 'emerald'} />
+            <InfoBox
+              label="Status"
+              value={task.status}
+              color={task.status === 'Completed' ? 'emerald' : task.status === 'In Progress' ? 'purple' : task.status === 'Cancelled' ? 'rose' : 'amber'}
+            />
+            <InfoBox
+              label="Priority"
+              value={task.priority}
+              color={task.priority === 'Urgent' ? 'rose' : task.priority === 'High' ? 'amber' : 'purple'}
+            />
+            <InfoBox
+              label="Due"
+              value={isOverdue ? 'Overdue' : task.dueDate}
+              color={isOverdue ? 'rose' : 'emerald'}
+            />
           </div>
 
           <div className="card !p-4 space-y-3">
@@ -1430,6 +2017,7 @@ function TaskDetailsDrawer({ task, onClose, onEdit, onComplete }) {
             <InfoRow icon={UserIcon} label="Assigned To" value={task.assignedTo} />
             <InfoRow icon={Calendar} label="Due Date" value={task.dueDate} />
             <InfoRow icon={Calendar} label="Created On" value={task.createdAt || '—'} />
+            {task.completedAt && <InfoRow icon={CheckCircle2} label="Completed" value={task.completedAt.slice(0, 10)} />}
           </div>
 
           <div className="card !p-4 space-y-3">
@@ -1440,14 +2028,176 @@ function TaskDetailsDrawer({ task, onClose, onEdit, onComplete }) {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={onEdit} className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-lilac bg-white py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40">
+            <button
+              onClick={onEdit}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-lilac bg-white py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+            >
               <Pencil size={14} /> Edit
             </button>
-            {!isCompleted && (
-              <button onClick={onComplete} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110">
+            {!isCompleted && !isCancelled && (
+              <button
+                onClick={onComplete}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110"
+              >
                 <CheckCircle2 size={14} /> Complete
               </button>
             )}
+            {(isCompleted || isCancelled) && (
+              <button
+                onClick={onReopen}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110"
+              >
+                <RotateCcw size={14} /> Reopen
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   REMINDER DETAILS DRAWER
+   ═══════════════════════════════════════════════════════════════ */
+function ReminderDetailsDrawer({ reminder, onClose, onEdit, onComplete }) {
+  const config = REMINDER_TYPES.find((t) => t.key === reminder.type) || REMINDER_TYPES[0];
+  const Icon = config.icon;
+  const isCompleted = reminder.status === 'Completed';
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm">
+      <div className="h-full w-full max-w-lg overflow-y-auto bg-white shadow-panel animate-slide-in-right">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-brand-lilac bg-gradient-to-r from-brand-mist/60 to-white px-5 py-4 backdrop-blur-sm">
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm">
+              <Bell size={20} />
+            </span>
+            <div>
+              <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-brand-magenta">Reminder Details</p>
+              <h3 className="font-display text-base font-bold text-brand-ink">{reminder.title}</h3>
+              <p className="font-mono text-[10px] text-brand-ink/50">{reminder.id}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-5">
+          <div className="grid grid-cols-3 gap-3">
+            <InfoBox label="Type" value={config.label} color="purple" />
+            <InfoBox label="Status" value={reminder.status} color={isCompleted ? 'emerald' : 'amber'} />
+            <InfoBox label="Assigned" value={reminder.assignedTo || 'Admin'} color="purple" />
+          </div>
+
+          <div className="card !p-4 space-y-3">
+            <h4 className="font-display text-sm font-semibold text-brand-ink">Schedule</h4>
+            <InfoRow icon={Calendar} label="When" value={reminder.time} />
+            <InfoRow icon={Clock} label="Created" value={reminder.createdAt ? formatRelative(reminder.createdAt) : '—'} />
+          </div>
+
+          {reminder.notes && (
+            <div className="card !p-4 space-y-3">
+              <h4 className="font-display text-sm font-semibold text-brand-ink">Notes</h4>
+              <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-4">
+                <p className="text-sm leading-relaxed text-brand-ink/80">{reminder.notes}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={onEdit}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-lilac bg-white py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+            >
+              <Pencil size={14} /> Edit
+            </button>
+            {!isCompleted && (
+              <button
+                onClick={onComplete}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110"
+              >
+                <CheckCircle2 size={14} /> Mark Done
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NOTIFICATION DETAILS DRAWER
+   ═══════════════════════════════════════════════════════════════ */
+function NotificationDetailsDrawer({ notification: n, onClose, onMarkRead, onMarkUnread }) {
+  const config = NOTIFICATION_TYPES.find((t) => t.key === n.type) || NOTIFICATION_TYPES[0];
+  const Icon = config.icon;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm">
+      <div className="h-full w-full max-w-lg overflow-y-auto bg-white shadow-panel animate-slide-in-right">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-brand-lilac bg-gradient-to-r from-brand-mist/60 to-white px-5 py-4 backdrop-blur-sm">
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-sm">
+              <Icon size={20} />
+            </span>
+            <div>
+              <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-brand-magenta">Notification</p>
+              <h3 className="font-display text-base font-bold text-brand-ink">{n.title}</h3>
+              <p className="font-mono text-[10px] text-brand-ink/50">{n.id}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-5">
+          <div className="grid grid-cols-3 gap-3">
+            <InfoBox label="Type" value={config.label} color="purple" />
+            <InfoBox label="Status" value={n.read ? 'Read' : 'Unread'} color={n.read ? 'emerald' : 'rose'} />
+            <InfoBox label="Sent" value={n.createdAt ? formatRelative(n.createdAt) : n.time || '—'} color="purple" />
+          </div>
+
+          {(n.recipient || n.priority) && (
+            <div className="card !p-4 space-y-3">
+              <h4 className="font-display text-sm font-semibold text-brand-ink">Delivery</h4>
+              {n.recipient && <InfoRow icon={Users} label="Recipient" value={n.recipient} />}
+              {n.priority && <InfoRow icon={Flag} label="Priority" value={n.priority} />}
+            </div>
+          )}
+
+          <div className="card !p-4 space-y-3">
+            <h4 className="font-display text-sm font-semibold text-brand-ink">Message</h4>
+            <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-4">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-brand-ink/80">{n.body}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {!n.read ? (
+              <button
+                onClick={onMarkRead}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-lilac bg-white py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+              >
+                <Check size={14} /> Mark Read
+              </button>
+            ) : (
+              <button
+                onClick={onMarkUnread}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-lilac bg-white py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+              >
+                <RotateCcw size={14} /> Mark Unread
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110"
+            >
+              Done
+            </button>
           </div>
         </div>
       </div>
@@ -1545,10 +2295,16 @@ function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm }) {
         </div>
         <p className="mb-5 text-sm text-brand-ink/60">{message}</p>
         <div className="flex gap-2">
-          <button onClick={onCancel} className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40">
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+          >
             Cancel
           </button>
-          <button onClick={onConfirm} className="flex-1 rounded-xl bg-rose-500 py-2.5 text-sm font-semibold text-white hover:bg-rose-600">
+          <button
+            onClick={onConfirm}
+            className="flex-1 rounded-xl bg-rose-500 py-2.5 text-sm font-semibold text-white hover:bg-rose-600"
+          >
             {confirmLabel}
           </button>
         </div>
@@ -1560,9 +2316,13 @@ function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm }) {
 function Toast({ message, type }) {
   return (
     <div className="fixed bottom-6 left-1/2 z-[100] -translate-x-1/2">
-      <div className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-panel ${
-        type === 'error' ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-emerald-200 bg-emerald-50 text-emerald-600'
-      }`}>
+      <div
+        className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-panel ${
+          type === 'error'
+            ? 'border-rose-200 bg-rose-50 text-rose-600'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-600'
+        }`}
+      >
         {type === 'error' ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
         {message}
       </div>

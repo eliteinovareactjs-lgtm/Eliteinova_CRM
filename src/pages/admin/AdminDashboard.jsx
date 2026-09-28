@@ -2,17 +2,17 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Users, Phone, PhoneMissed, UserCheck, TrendingUp, Award, Activity,
-  Zap, ArrowRight, BarChart3, Sparkles, Target,
+  Users, Phone, PhoneMissed, UserCheck, TrendingUp, Award,
+  ArrowRight, BarChart3, Sparkles, Target,
   CheckCircle2, Building2, Layers, Calendar, Megaphone,
   RefreshCw, Download, ChevronRight, PhoneIncoming, PhoneOutgoing,
   XCircle, AlertTriangle, Plus, UserPlus,
-  ListChecks, Radio, Percent,
+  ListChecks,
 } from 'lucide-react';
 
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid,
-  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
+  LineChart, Line, AreaChart, Area,
 } from 'recharts';
 
 import { useAuth } from '../../context/AuthContext';
@@ -43,6 +43,8 @@ export default function AdminDashboard() {
   const [chartView, setChartView] = useState('leads');
   const [refreshed, setRefreshed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  /* ✅ FIX: refreshKey forces re-render for handleRefresh */
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 40);
@@ -50,7 +52,11 @@ export default function AdminDashboard() {
   }, []);
 
   /* ========== SCOPED DATA ========== */
-  const stats = statsForWebsite(activeWebsiteId);
+  /* ✅ FIX: memoize stats for stable reference */
+  const stats = useMemo(
+    () => statsForWebsite(activeWebsiteId),
+    [activeWebsiteId]
+  );
 
   const agents = useMemo(
     () => AGENTS.filter((a) => a.websiteId === activeWebsiteId),
@@ -60,16 +66,23 @@ export default function AdminDashboard() {
     () => LEADS.filter((l) => l.websiteId === activeWebsiteId),
     [activeWebsiteId]
   );
+  /* ✅ FIX: support both projectId and websiteId */
   const calls = useMemo(
-    () => (CALLS || []).filter((c) => c.projectId === activeWebsiteId),
+    () => (CALLS || []).filter(
+      (c) => (c.projectId ?? c.websiteId) === activeWebsiteId
+    ),
     [activeWebsiteId]
   );
   const followUps = useMemo(
-    () => (FOLLOW_UPS || []).filter((f) => f.projectId === activeWebsiteId),
+    () => (FOLLOW_UPS || []).filter(
+      (f) => (f.projectId ?? f.websiteId) === activeWebsiteId
+    ),
     [activeWebsiteId]
   );
   const campaigns = useMemo(
-    () => (CAMPAIGNS || []).filter((c) => c.projectId === activeWebsiteId),
+    () => (CAMPAIGNS || []).filter(
+      (c) => (c.projectId ?? c.websiteId) === activeWebsiteId
+    ),
     [activeWebsiteId]
   );
 
@@ -81,7 +94,12 @@ export default function AdminDashboard() {
     const unassignedLeads = leads.length - assignedLeads;
     const todayFollowUps = followUps.filter((f) => f.status === 'Today').length;
     const overdueFollowUps = followUps.filter((f) => f.status === 'Overdue').length;
-    const todaysCalls = calls.filter((c) => c.date === '2026-09-22').length;
+
+    /* ✅ FIX: use dynamic today's date key */
+    const todayKey = new Date().toLocaleDateString('en-IN', {
+      year: 'numeric', month: 'short', day: '2-digit',
+    });
+    const todaysCalls = calls.filter((c) => c.date === todayKey).length;
     const activeCampaigns = campaigns.filter((c) => c.status === 'Active').length;
 
     return {
@@ -92,8 +110,9 @@ export default function AdminDashboard() {
       todayFollowUps,
       overdueFollowUps,
       todaysCalls,
-      missedCalls: stats.missedCalls,
-      activeAgents: stats.activeAgents,
+      /* ✅ FIX: safe access to stats */
+      missedCalls: stats?.missedCalls ?? 0,
+      activeAgents: stats?.activeAgents ?? 0,
       convertedLeads: wonLeads,
       activeCampaigns,
       conversionRate: leads.length ? Math.round((wonLeads / leads.length) * 100) : 0,
@@ -132,8 +151,13 @@ export default function AdminDashboard() {
 
   /* ========== CALL ANALYTICS ========== */
   const callAnalytics = useMemo(() => {
-    const inbound = calls.filter((c) => c.type === 'inbound').length;
-    const outbound = calls.filter((c) => c.type === 'outbound').length;
+    /* ✅ FIX: support both inbound/incoming and outbound/outgoing */
+    const inbound = calls.filter((c) =>
+      c.type === 'inbound' || c.type === 'incoming'
+    ).length;
+    const outbound = calls.filter((c) =>
+      c.type === 'outbound' || c.type === 'outgoing'
+    ).length;
     const missed = calls.filter((c) => c.status === 'missed').length;
     const connected = calls.filter((c) => c.status === 'connected').length;
     const totalDuration = calls.reduce((sum, c) => {
@@ -169,13 +193,15 @@ export default function AdminDashboard() {
   /* ========== HANDLERS ========== */
   const handleRefresh = () => {
     setRefreshed(true);
+    /* ✅ FIX: force re-render so any derived data picks up changes */
+    setRefreshKey((k) => k + 1);
     setTimeout(() => setRefreshed(false), 1200);
   };
 
   const handleExport = () => {
     const rows = [
-      ['Admin Dashboard Report'],
-      ['Website', activeWebsite?.name],
+      ['Admin Dashboard Report', ''],
+      ['Website', activeWebsite?.name || ''],
       ['Total Leads', metrics.totalLeads],
       ['New Leads', metrics.newLeads],
       ['Assigned Leads', metrics.assignedLeads],
@@ -188,12 +214,18 @@ export default function AdminDashboard() {
       ['Converted Leads', metrics.convertedLeads],
       ['Active Campaigns', metrics.activeCampaigns],
     ];
-    const csv = rows.map((r) => r.join(',')).join('\n');
+    /* ✅ FIX: proper CSV escaping (handles commas, quotes) */
+    const csv = rows
+      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `admin-report-${activeWebsiteId}.csv`; a.click();
-    URL.revokeObjectURL(url);
+    a.href = url;
+    a.download = `admin-report-${activeWebsiteId}-${Date.now()}.csv`;
+    a.click();
+    /* ✅ FIX: revoke URL after download */
+    setTimeout(() => URL.revokeObjectURL(url), 100);
   };
 
   return (
@@ -214,7 +246,10 @@ export default function AdminDashboard() {
         }}
       />
 
-      <div className={`relative space-y-6 px-1 transition-all duration-500 ease-out ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1'}`}>
+      <div
+        key={refreshKey}
+        className={`relative space-y-6 px-1 transition-all duration-500 ease-out ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1'}`}
+      >
         {/* ================= HEADER ================= */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -223,7 +258,7 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* ✨ CHANGED: stronger gradient tint + darker border */}
+            {/* Project badge */}
             <div className="group flex items-center gap-2 rounded-full border border-brand-magenta/25 bg-gradient-to-r from-brand-magenta/[0.12] to-brand-purple/[0.10] px-4 py-2 text-sm font-semibold text-brand-purple shadow-sm transition-all hover:border-brand-magenta/50 hover:shadow-md">
               <Building2 size={16} className="transition-transform group-hover:rotate-6" />
               {activeWebsite?.name}
@@ -252,7 +287,6 @@ export default function AdminDashboard() {
         </div>
 
         {/* ================= PROJECT OVERVIEW BANNER ================= */}
-        {/* ✨ CHANGED: darker gradient base + stronger border + elevated shadow */}
         <div className="group relative flex flex-wrap items-center justify-between gap-3 overflow-hidden rounded-2xl border border-brand-magenta/30 bg-gradient-to-r from-brand-magenta/[0.14] via-brand-purple/[0.10] to-brand-rose/[0.10] px-5 py-4 shadow-[0_10px_30px_-18px_rgba(227,28,121,0.5)] transition-all hover:border-brand-magenta/50 hover:shadow-[0_14px_36px_-16px_rgba(227,28,121,0.55)]">
           <span className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rotate-45 bg-gradient-to-br from-brand-magenta/[0.15] to-transparent" />
           <span className="pointer-events-none absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-brand-purple/10 blur-2xl" />
@@ -273,7 +307,7 @@ export default function AdminDashboard() {
           <div className="relative flex flex-wrap gap-3">
             {[
               { label: 'This Week', value: `+${DAILY_CALL_TREND.reduce((s, d) => s + d.calls, 0)}`, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-200' },
-              { label: 'Active Agents', value: stats.activeAgents, icon: UserCheck, color: 'text-brand-purple', bg: 'bg-violet-50', ring: 'ring-violet-200' },
+              { label: 'Active Agents', value: stats?.activeAgents ?? 0, icon: UserCheck, color: 'text-brand-purple', bg: 'bg-violet-50', ring: 'ring-violet-200' },
               { label: 'Conversion', value: `${metrics.conversionRate}%`, icon: Target, color: 'text-brand-magenta', bg: 'bg-rose-50', ring: 'ring-rose-200' },
             ].map((m) => {
               const Icon = m.icon;
@@ -293,9 +327,9 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* ================= 11 KPI CARDS ================= */}
+        {/* ================= 11 KPI CARDS (UNCHANGED) ================= */}
         <div className="space-y-3">
-          <SectionTitle eyebrow="Live Metrics" title="Dashboard KPIs" hint="Click any card to open its module" />
+          <SectionTitle eyebrow="Live Metrics" title="Dashboard KPIs" />
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
             <KPICard icon={Layers}        label="Total Leads"        value={metrics.totalLeads}       color="rose"    sub="All in project"    to={ROUTES.allLeads} delay={0} />
@@ -335,6 +369,7 @@ export default function AdminDashboard() {
                     return (
                       <button
                         key={v.key}
+                        type="button"
                         onClick={() => setChartView(v.key)}
                         className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all duration-300 ${
                           active
@@ -468,6 +503,7 @@ export default function AdminDashboard() {
               icon={Award}
               action={
                 <button
+                  type="button"
                   onClick={() => navigate(ROUTES.agents)}
                   className="group inline-flex items-center gap-1 text-[11px] font-semibold text-brand-magenta hover:underline"
                 >
@@ -532,7 +568,7 @@ export default function AdminDashboard() {
                 <StatTile icon={PhoneOutgoing} label="Outbound"  value={callAnalytics.outbound}  color="purple" />
                 <StatTile icon={PhoneMissed}   label="Missed"    value={callAnalytics.missed}    color="rose" />
                 <StatTile icon={CheckCircle2}  label="Connected" value={callAnalytics.connected} color="emerald" />
-                <StatTile icon={XCircle}       label="Failed"    value={calls.length - callAnalytics.connected - callAnalytics.missed} color="rose" />
+                <StatTile icon={XCircle}       label="Failed"    value={Math.max(0, calls.length - callAnalytics.connected - callAnalytics.missed)} color="rose" />
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <div className="relative overflow-hidden rounded-xl border border-brand-lilac bg-gradient-to-br from-brand-magenta/[0.06] to-white p-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-magenta/40 hover:shadow-md">
@@ -562,14 +598,16 @@ export default function AdminDashboard() {
                   <span className="font-mono text-[10px] uppercase tracking-wider text-brand-ink/60">Compliance</span>
                   <span className="font-display text-sm font-bold text-brand-magenta">
                     {followUps.length
-                      ? Math.round(((followUps.length - followUpAnalytics.overdue) / followUps.length) * 100)
+                      ? Math.max(0, Math.round(((followUps.length - followUpAnalytics.overdue) / followUps.length) * 100))
                       : 0}%
                   </span>
                 </div>
                 <div className="relative h-2 overflow-hidden rounded-full bg-brand-lilac">
                   <div
                     className="relative h-full rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple transition-all duration-1000 ease-out"
-                    style={{ width: `${followUps.length ? ((followUps.length - followUpAnalytics.overdue) / followUps.length) * 100 : 0}%` }}
+                    style={{
+                      width: `${followUps.length ? Math.max(0, ((followUps.length - followUpAnalytics.overdue) / followUps.length) * 100) : 0}%`,
+                    }}
                   >
                     <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/50 to-transparent" />
                   </div>
@@ -698,7 +736,6 @@ function SectionTitle({ eyebrow, title, hint }) {
   );
 }
 
-/* ✨ Panel now has a subtle warm gradient base + defined border */
 function Panel({ title, subtitle, action, icon: Icon, className = '', children }) {
   return (
     <div className={`group/panel relative overflow-hidden rounded-2xl border border-brand-lilac bg-gradient-to-br from-white via-white to-brand-mist/40 shadow-[0_4px_16px_-8px_rgba(139,47,214,0.15)] backdrop-blur-sm transition-all duration-300 hover:border-brand-magenta/35 hover:shadow-[0_14px_36px_-16px_rgba(227,28,121,0.28)] ${className}`}>
@@ -736,6 +773,7 @@ function KPICard({ icon: Icon, label, value, color = 'purple', sub, to, alert, d
 
   return (
     <button
+      type="button"
       onClick={() => to && navigate(to)}
       style={{ animationDelay: `${delay}ms` }}
       className={`group relative flex flex-col items-start gap-2 overflow-hidden rounded-2xl border-2 bg-gradient-to-br from-white via-white to-brand-mist/40 p-4 text-left shadow-[0_4px_16px_-8px_rgba(139,47,214,0.12)] transition-all duration-300 ease-out ${t.border} ${t.glow} hover:-translate-y-1.5 active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-brand-magenta/40 animate-fade-slide-in`}
@@ -746,8 +784,8 @@ function KPICard({ icon: Icon, label, value, color = 'purple', sub, to, alert, d
 
       {alert && (
         <span className="pointer-events-none absolute right-3 top-3 flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-magenta opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-magenta" />
         </span>
       )}
 
@@ -793,7 +831,9 @@ function StatTile({ icon: Icon, label, value, color = 'purple', alert }) {
         </div>
       )}
       {!Icon && <p className="relative font-mono text-[10px] font-bold uppercase tracking-wider opacity-80">{label}</p>}
-      <p className="relative mt-1 font-display text-lg font-bold">{value?.toLocaleString?.() ?? value}</p>
+      <p className="relative mt-1 font-display text-lg font-bold">
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </p>
     </div>
   );
 }
@@ -812,6 +852,7 @@ function QuickAction({ label, icon: Icon, to, tone, delay = 0 }) {
 
   return (
     <button
+      type="button"
       onClick={() => navigate(to)}
       style={{ animationDelay: `${delay}ms` }}
       className={`group relative flex flex-col items-center gap-2 overflow-hidden rounded-2xl border border-brand-lilac bg-gradient-to-br from-white via-white to-brand-mist/50 p-4 shadow-[0_4px_16px_-8px_rgba(139,47,214,0.15)] transition-all duration-300 hover:-translate-y-1.5 ${t.border} ${t.glow} animate-fade-slide-in`}

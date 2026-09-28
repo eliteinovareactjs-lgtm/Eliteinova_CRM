@@ -10,7 +10,7 @@ import {
   BarChart3, PhoneCall, Calendar, Eye, Pencil, Save, Shield,
   Grid3x3, List, Crown, Star, Zap, Hash, Copy, Building2,
   PhoneIncoming, PhoneOutgoing, PhoneMissed, Hash as HashIcon,
-  FileText, StickyNote, Percent,
+  FileText, StickyNote, Percent, Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -74,16 +74,17 @@ const saveState = (key, value) => {
 const initials = (name) =>
   (name || '?').split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
 
+/* ✅ FIX: simplified — same branch was used twice */
 const formatDate = (val) => {
   if (!val) return '—';
-  const d = typeof val === 'number' ? new Date(val) : new Date(val);
+  const d = new Date(val);
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 const formatDateTime = (val) => {
   if (!val) return '—';
-  const d = typeof val === 'number' ? new Date(val) : new Date(val);
+  const d = new Date(val);
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 };
@@ -99,20 +100,17 @@ export default function Agents() {
   const [toast, setToast] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [showAddAgent, setShowAddAgent] = useState(false);
-  const [viewingAgent, setViewingAgent] = useState(null); // ✨ for detail drawer
+  const [viewingAgent, setViewingAgent] = useState(null);
+
+  /* ✅ FIX: edit modal lives at parent level so the drawer can trigger it */
+  const [editingAgent, setEditingAgent] = useState(null);
 
   const [allAgents, setAllAgents] = useState(() =>
     loadState(`list:${activeWebsiteId}`, INITIAL_AGENTS.filter((a) => a.websiteId === activeWebsiteId))
   );
-  const [groups, setGroups] = useState(() =>
-    loadState(`groups:${activeWebsiteId}`, [])
-  );
-  const [activityLog, setActivityLog] = useState(() =>
-    loadState(`activity:${activeWebsiteId}`, [])
-  );
-  const [assignments, setAssignments] = useState(() =>
-    loadState(`assignments:${activeWebsiteId}`, [])
-  );
+  const [groups, setGroups] = useState(() => loadState(`groups:${activeWebsiteId}`, []));
+  const [activityLog, setActivityLog] = useState(() => loadState(`activity:${activeWebsiteId}`, []));
+  const [assignments, setAssignments] = useState(() => loadState(`assignments:${activeWebsiteId}`, []));
 
   useEffect(() => {
     setAllAgents(loadState(`list:${activeWebsiteId}`, INITIAL_AGENTS.filter((a) => a.websiteId === activeWebsiteId)));
@@ -157,8 +155,11 @@ export default function Agents() {
     setShowAddAgent(false);
   };
 
+  /* ✅ FIX: accepts id + updates, closes any edit state */
   const handleEdit = (id, updates) => {
     setAllAgents((p) => p.map((a) => (a.id === id ? { ...a, ...updates } : a)));
+    setEditingAgent(null);
+    setViewingAgent(null);
     showToast('Employee updated');
   };
 
@@ -175,6 +176,8 @@ export default function Agents() {
     if (!confirmDelete) return;
     if (confirmDelete.kind === 'agent') {
       setAllAgents((p) => p.filter((a) => a.id !== confirmDelete.id));
+      /* ✅ FIX: also clean up activity log entries for deleted agent */
+      setActivityLog((p) => p.filter((log) => log.agentId !== confirmDelete.id));
       showToast(`"${confirmDelete.name}" removed`, 'error');
     } else if (confirmDelete.kind === 'group') {
       setGroups((p) => p.filter((g) => g.id !== confirmDelete.id));
@@ -193,6 +196,8 @@ export default function Agents() {
         `Status changed to ${newStatus}`
       );
     }
+    /* ✅ FIX: sync viewing agent state too */
+    setViewingAgent((prev) => (prev && prev.id === id ? { ...prev, status: newStatus } : prev));
     showToast(`${agent?.name} → ${newStatus}`);
   };
 
@@ -312,15 +317,14 @@ export default function Agents() {
                 <h2 className="font-display text-sm font-semibold text-brand-ink">Live Snapshot</h2>
               </div>
             </div>
-            <p className="text-[11px] text-brand-ink/40">Click a card to switch tab</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-            <KpiCard icon={Users2}   label="Total Employees" value={counts.agents}  sub="All team members"  color="purple" active={tab === 'agents'}       onClick={() => setTab('agents')}       delay={0} />
-            <KpiCard icon={Users}    label="Groups"          value={counts.groups}  sub="Organized groups"  color="cyan"   active={tab === 'groups'}       onClick={() => setTab('groups')}       delay={40} />
-            <KpiCard icon={Activity} label="Active Now"      value={counts.active}  sub="Available"         color="emerald" active={tab === 'availability'} onClick={() => setTab('availability')} delay={80} />
-            <KpiCard icon={Zap}      label="Activity Logs"   value={activityLog.length} sub="Recent events"  color="amber"  active={tab === 'activity'}     onClick={() => setTab('activity')}     delay={120} />
-            <KpiCard icon={Target}   label="Assignments"     value={assignments.length} sub="All time"      color="rose"   active={tab === 'allocation'}   onClick={() => setTab('allocation')}   delay={160} />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <KpiCard icon={Users2}   label="Total Employees" value={counts.agents}         sub="All team members"  color="purple"  active={tab === 'agents'}       onClick={() => setTab('agents')}       delay={0} />
+            <KpiCard icon={Users}    label="Groups"          value={counts.groups}         sub="Organized groups"  color="cyan"    active={tab === 'groups'}       onClick={() => setTab('groups')}       delay={40} />
+            <KpiCard icon={Activity} label="Active Now"      value={counts.active}         sub="Available"         color="emerald" active={tab === 'availability'} onClick={() => setTab('availability')} delay={80} />
+            <KpiCard icon={Zap}      label="Activity Logs"   value={activityLog.length}    sub="Recent events"     color="amber"   active={tab === 'activity'}     onClick={() => setTab('activity')}     delay={120} />
+            <KpiCard icon={Target}   label="Assignments"     value={assignments.length}    sub="All time"          color="rose"    active={tab === 'allocation'}   onClick={() => setTab('allocation')}   delay={160} />
           </div>
         </div>
 
@@ -409,7 +413,6 @@ export default function Agents() {
           <PerformanceTab
             agents={websiteAgents}
             websiteLeads={websiteLeads}
-            websiteId={activeWebsiteId}
             onView={(agent) => setViewingAgent(agent)}
           />
         )}
@@ -434,7 +437,17 @@ export default function Agents() {
           />
         )}
 
-        {/* ✨ NEW: Full agent detail drawer */}
+        {/* ✅ FIX: single edit modal driven by parent state */}
+        {editingAgent && (
+          <AgentModal
+            mode="edit"
+            initial={editingAgent}
+            onClose={() => setEditingAgent(null)}
+            onSubmit={(data) => handleEdit(editingAgent.id, data)}
+          />
+        )}
+
+        {/* ✅ FIXED: onEdit now uses parent's setEditingAgent — no more undefined reference */}
         {viewingAgent && (
           <AgentDetailDrawer
             agent={viewingAgent}
@@ -444,21 +457,15 @@ export default function Agents() {
             assignments={assignments}
             onClose={() => setViewingAgent(null)}
             onEdit={() => {
-              // Switch drawer off, open edit modal by passing through the tab's onEdit
-              const agent = viewingAgent;
+              setEditingAgent(viewingAgent);
               setViewingAgent(null);
-              // pass to AgentsListTab via a shared state — we use a small trick: set tab to agents then set editing via a ref
-              setPendingEditAgent(agent);
             }}
             onDelete={() => {
               const agent = viewingAgent;
               setViewingAgent(null);
               handleDelete(agent.id, agent.name);
             }}
-            onSetStatus={(status) => {
-              handleSetStatus(viewingAgent.id, status);
-              setViewingAgent((prev) => (prev ? { ...prev, status } : prev));
-            }}
+            onSetStatus={(status) => handleSetStatus(viewingAgent.id, status)}
             onViewLeads={() => {
               const name = viewingAgent.name;
               setViewingAgent(null);
@@ -495,7 +502,7 @@ function KpiCard({ icon: Icon, label, value, sub, color = 'purple', active, onCl
     rose:    { border: 'border-rose-200 hover:border-rose-400', bg: 'from-rose-50 via-rose-50/30 to-white', iconBg: 'bg-rose-100 text-brand-magenta border-rose-200', bar: 'from-brand-magenta to-brand-purple', glow: 'bg-brand-magenta/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(227,28,121,0.45)]', valueColor: 'text-brand-magenta', ring: 'ring-rose-300' },
     cyan:    { border: 'border-cyan-200 hover:border-cyan-400', bg: 'from-cyan-50 via-cyan-50/30 to-white', iconBg: 'bg-cyan-100 text-cyan-600 border-cyan-200', bar: 'from-cyan-500 to-blue-400', glow: 'bg-cyan-500/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(6,182,212,0.4)]', valueColor: 'text-cyan-600', ring: 'ring-cyan-300' },
   };
-  const t = themes[color];
+  const t = themes[color] || themes.purple;
 
   return (
     <button
@@ -799,7 +806,6 @@ function AgentCard({ agent, websiteLeads, menuOpenId, setMenuOpenId, onView, onE
         </div>
       </div>
 
-      {/* ✨ Actions — Call, Leads, View, Edit, Delete all directly visible */}
       <div className="relative mt-4 flex gap-1.5">
         <button
           onClick={() => { window.location.href = `tel:${agent.phone}`; }}
@@ -835,7 +841,7 @@ function AgentCard({ agent, websiteLeads, menuOpenId, setMenuOpenId, onView, onE
 }
 
 /* ═══ AGENT ROW (LIST) ═══ */
-function AgentRow({ agent, websiteLeads, menuOpenId, setMenuOpenId, onView, onEdit, onDelete, onSetStatus, onViewLeads }) {
+function AgentRow({ agent, websiteLeads, menuOpenId, setMenuOpenId, onView, onEdit, onDelete, onSetStatus }) {
   const stats = useMemo(() => {
     const agentLeads = websiteLeads.filter((l) => l.assignedAgent === agent.name);
     const won = agentLeads.filter((l) => l.status === 'Won').length;
@@ -884,7 +890,6 @@ function AgentRow({ agent, websiteLeads, menuOpenId, setMenuOpenId, onView, onEd
         </span>
       </span>
 
-      {/* ✨ Visible action buttons on every row */}
       <div className="flex shrink-0 items-center gap-1.5">
         <button
           onClick={onView}
@@ -932,12 +937,11 @@ function AgentRow({ agent, websiteLeads, menuOpenId, setMenuOpenId, onView, onEd
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ✨ NEW: FULL AGENT DETAIL DRAWER
+   AGENT DETAIL DRAWER
    ═══════════════════════════════════════════════════════════════ */
 function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignments, onClose, onEdit, onDelete, onSetStatus, onViewLeads }) {
   const style = STATUS_STYLES[agent.status] || STATUS_STYLES.Offline;
 
-  /* Compute all metrics for this agent */
   const metrics = useMemo(() => {
     const agentLeads = websiteLeads.filter((l) => l.assignedAgent === agent.name);
     const won = agentLeads.filter((l) => l.status === 'Won').length;
@@ -974,19 +978,16 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
     };
   }, [agent, websiteLeads]);
 
-  /* Groups this agent belongs to */
   const agentGroups = useMemo(
     () => groups.filter((g) => g.memberIds?.includes(agent.id)),
     [groups, agent.id]
   );
 
-  /* This agent's activity */
   const agentActivity = useMemo(
     () => activityLog.filter((log) => log.agentId === agent.id).slice(0, 10),
     [activityLog, agent.id]
   );
 
-  /* Assignment history for this agent */
   const agentAssignments = useMemo(
     () => assignments.filter((a) => a.agentId === agent.id).slice(0, 10),
     [assignments, agent.id]
@@ -1003,7 +1004,6 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm">
       <div className="h-full w-full max-w-2xl overflow-y-auto bg-white shadow-panel animate-slide-in-right">
-        {/* ═══ Header ═══ */}
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-brand-lilac bg-gradient-to-r from-brand-mist/60 to-white px-6 py-4 backdrop-blur-sm">
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white">
@@ -1014,16 +1014,13 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
               <h2 className="font-display text-base font-bold text-brand-ink">{agent.name}</h2>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac"
-          >
+          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
             <X size={18} />
           </button>
         </div>
 
         <div className="space-y-5 p-6">
-          {/* ═══ Profile card ═══ */}
+          {/* Profile card */}
           <div className="relative overflow-hidden rounded-2xl border border-brand-lilac bg-gradient-to-br from-brand-mist/40 to-white p-5">
             <span className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-brand-magenta/10 blur-3xl" />
 
@@ -1066,7 +1063,6 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
               </div>
             </div>
 
-            {/* Quick actions */}
             <div className="relative mt-5 flex flex-wrap gap-2">
               <button
                 onClick={() => { window.location.href = `tel:${agent.phone}`; }}
@@ -1095,7 +1091,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
             </div>
           </div>
 
-          {/* ═══ Status switcher ═══ */}
+          {/* Status switcher */}
           <div className="card !p-4">
             <p className="mb-3 font-mono text-[10px] uppercase tracking-wider text-brand-ink/50">Change Status</p>
             <div className="flex gap-2">
@@ -1120,7 +1116,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
             </div>
           </div>
 
-          {/* ═══ Lead pipeline metrics ═══ */}
+          {/* Lead pipeline */}
           <div className="card !p-4">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1138,7 +1134,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               <DetailStat label="Total Leads"  value={metrics.leads}    tone="purple"  icon={Users2} />
               <DetailStat label="Won"          value={metrics.won}      tone="emerald" icon={Award} />
-              <DetailStat label="Fresh"        value={metrics.fresh}    tone="amber"   icon={SparklesIcon} />
+              <DetailStat label="Fresh"        value={metrics.fresh}    tone="amber"   icon={Sparkles} />
               <DetailStat label="Follow-up"    value={metrics.followUp} tone="purple"  icon={Calendar} />
               <DetailStat label="Missed"       value={metrics.missed}   tone="rose"    icon={PhoneMissed} />
               <DetailStat label="Lost"         value={metrics.lost}     tone="rose"    icon={X} />
@@ -1158,7 +1154,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
             </div>
           </div>
 
-          {/* ═══ Calls metrics ═══ */}
+          {/* Calls */}
           <div className="card !p-4">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1182,7 +1178,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
             </div>
           </div>
 
-          {/* ═══ Follow-ups ═══ */}
+          {/* Follow-ups */}
           <div className="card !p-4">
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1203,7 +1199,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
             </div>
           </div>
 
-          {/* ═══ Assigned groups ═══ */}
+          {/* Groups */}
           {agentGroups.length > 0 && (
             <div className="card !p-4">
               <div className="mb-3 flex items-center gap-2">
@@ -1228,7 +1224,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
             </div>
           )}
 
-          {/* ═══ Recent leads ═══ */}
+          {/* Recent leads */}
           {metrics.recentLeads.length > 0 && (
             <div className="card !p-0 overflow-hidden">
               <div className="flex items-center justify-between gap-3 border-b border-brand-lilac/60 px-5 py-4">
@@ -1278,7 +1274,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
             </div>
           )}
 
-          {/* ═══ Activity timeline ═══ */}
+          {/* Activity timeline */}
           {agentActivity.length > 0 && (
             <div className="card !p-0 overflow-hidden">
               <div className="border-b border-brand-lilac/60 px-5 py-4">
@@ -1312,7 +1308,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
             </div>
           )}
 
-          {/* ═══ Assignment history ═══ */}
+          {/* Assignment history */}
           {agentAssignments.length > 0 && (
             <div className="card !p-0 overflow-hidden">
               <div className="border-b border-brand-lilac/60 px-5 py-4">
@@ -1344,7 +1340,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
             </div>
           )}
 
-          {/* ═══ Footer summary ═══ */}
+          {/* Footer summary */}
           <div className="rounded-2xl border border-brand-lilac bg-gradient-to-br from-brand-mist/60 to-white p-4">
             <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink/50">Summary</p>
             <p className="mt-1.5 text-sm text-brand-ink/80">
@@ -1360,7 +1356,7 @@ function AgentDetailDrawer({ agent, groups, websiteLeads, activityLog, assignmen
   );
 }
 
-/* ── Detail stat tile (used in drawer) ── */
+/* ── Detail stat tile ── */
 function DetailStat({ label, value, tone = 'purple', icon: Icon }) {
   const tones = {
     purple:  { fg: 'text-brand-purple',  bg: 'bg-violet-50',  border: 'border-violet-100' },
@@ -1368,7 +1364,7 @@ function DetailStat({ label, value, tone = 'purple', icon: Icon }) {
     amber:   { fg: 'text-amber-600',     bg: 'bg-amber-50',   border: 'border-amber-100' },
     rose:    { fg: 'text-brand-magenta', bg: 'bg-rose-50',    border: 'border-rose-100' },
   };
-  const t = tones[tone];
+  const t = tones[tone] || tones.purple;
   return (
     <div className={`rounded-xl border ${t.border} ${t.bg} p-3`}>
       <div className="flex items-center justify-between">
@@ -1379,25 +1375,6 @@ function DetailStat({ label, value, tone = 'purple', icon: Icon }) {
         {typeof value === 'number' ? value.toLocaleString() : value}
       </p>
     </div>
-  );
-}
-
-/* Placeholder icon (Sparkles already imported as SparklesIcon needed) */
-function SparklesIcon(props) {
-  return (
-    <svg
-      {...props}
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z" />
-    </svg>
   );
 }
 
@@ -1765,7 +1742,8 @@ function ActivityTab({ activityLog, agents, onClear }) {
 /* ═══════════════════════════════════════════════════════════════
    TAB 5 — PERFORMANCE
    ═══════════════════════════════════════════════════════════════ */
-function PerformanceTab({ agents, websiteLeads, websiteId, onView }) {
+/* ✅ FIX: removed unused `websiteId` prop */
+function PerformanceTab({ agents, websiteLeads, onView }) {
   const [sortBy, setSortBy] = useState('conversion');
 
   const data = useMemo(() => {
@@ -1926,7 +1904,7 @@ function MiniStat({ icon: Icon, label, value, color = 'purple' }) {
   };
   return (
     <div className="flex items-center gap-3 rounded-xl border border-brand-lilac bg-white p-3 transition-all hover:-translate-y-0.5 hover:shadow-md">
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${colors[color]}`}>
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${colors[color] || colors.purple}`}>
         <Icon size={18} />
       </span>
       <div className="min-w-0">
@@ -2100,7 +2078,7 @@ function ActionTile({ icon: Icon, title, subtitle, color = 'purple', onClick, di
     purple:  { fg: 'text-brand-purple',  bg: 'bg-violet-50', border: 'border-violet-200 hover:border-violet-400', shadow: 'hover:shadow-[0_12px_28px_-12px_rgba(139,47,214,0.4)]' },
     emerald: { fg: 'text-emerald-600',   bg: 'bg-emerald-50', border: 'border-emerald-200 hover:border-emerald-400', shadow: 'hover:shadow-[0_12px_28px_-12px_rgba(16,185,129,0.4)]' },
   };
-  const c = colors[color];
+  const c = colors[color] || colors.purple;
 
   return (
     <button
@@ -2138,7 +2116,8 @@ function AssignLeadsModal({ agents, unassignedLeads, preselectedAgentId, onClose
   const toggle = (id) => {
     setSelected((p) => {
       const next = new Set(p);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -2256,7 +2235,8 @@ function ReassignLeadsModal({ agents, websiteLeads, preselectedFromAgentId, onCl
   const toggle = (id) => {
     setSelected((p) => {
       const next = new Set(p);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -2668,7 +2648,7 @@ function StatBox({ label, value, tone = 'purple' }) {
   };
   return (
     <div className="rounded-xl bg-brand-mist p-2.5">
-      <p className={`font-display text-base font-bold tabular-nums ${tones[tone]}`}>{value}</p>
+      <p className={`font-display text-base font-bold tabular-nums ${tones[tone] || tones.purple}`}>{value}</p>
       <p className="font-mono text-[9px] uppercase tracking-wider text-brand-ink/50">{label}</p>
     </div>
   );

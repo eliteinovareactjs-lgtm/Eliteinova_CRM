@@ -1,10 +1,10 @@
 // src/pages/admin/LeadConfig.jsx
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Tag, Layers, ListFilter, GitBranch, Plus, X, Trash2, Save, Pencil,
   AlertCircle, CheckCircle2, Database, Info, Check, Sparkles, Hash,
   Type, Calendar, ListChecks, Mail, Phone, ToggleLeft, RotateCcw,
-  TrendingUp, ArrowRight,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -52,7 +52,9 @@ const STORAGE_PREFIX = 'leadConfig:';
 /* ═══════════════════════════════════════════════════════════════
    HELPERS
    ═══════════════════════════════════════════════════════════════ */
-const uid = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+let uidCounter = 0;
+/* ✅ FIX: counter-based UID avoids collision in same millisecond */
+const uid = (prefix) => `${prefix}-${Date.now()}-${++uidCounter}-${Math.random().toString(36).slice(2, 6)}`;
 
 const loadState = (key, fallback) => {
   try {
@@ -77,6 +79,14 @@ const clearState = (key) => {
   } catch { /* ignore */ }
 };
 
+/* ✅ FIX: helpers for name uniqueness checks */
+const isDuplicate = (list, name, excludeId = null) =>
+  list.some(
+    (item) =>
+      item.id !== excludeId &&
+      item.name.trim().toLowerCase() === name.trim().toLowerCase()
+  );
+
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════ */
@@ -87,31 +97,32 @@ export default function LeadConfig() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
-  /* Defaults per website */
-  const defaults = {
-    sources:    INITIAL_SOURCES.filter((s) => s.projectId === activeWebsiteId),
-    categories: INITIAL_CATEGORIES.filter((c) => c.projectId === activeWebsiteId),
-    statuses:   INITIAL_STATUSES.filter((s) => s.projectId === activeWebsiteId),
-    stages:     INITIAL_STAGES.filter((s) => s.projectId === activeWebsiteId),
-    fields:     INITIAL_FIELDS.filter((f) => f.projectId === activeWebsiteId),
-  };
+  /* ✅ FIX: memoize defaults per website so they aren't recreated each render */
+  const defaults = useMemo(
+    () => ({
+      sources:    INITIAL_SOURCES.filter((s) => s.projectId === activeWebsiteId),
+      categories: INITIAL_CATEGORIES.filter((c) => c.projectId === activeWebsiteId),
+      statuses:   INITIAL_STATUSES.filter((s) => s.projectId === activeWebsiteId),
+      stages:     INITIAL_STAGES.filter((s) => s.projectId === activeWebsiteId),
+      fields:     INITIAL_FIELDS.filter((f) => f.projectId === activeWebsiteId),
+    }),
+    [activeWebsiteId]
+  );
 
-  /* State */
   const [sources, setSources] = useState([]);
   const [categories, setCategories] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [stages, setStages] = useState([]);
   const [fields, setFields] = useState([]);
 
-  /* Load on mount + when website changes */
+  /* ✅ FIX: use `defaults` in deps (via useMemo) */
   useEffect(() => {
     setSources(loadState(`sources:${activeWebsiteId}`, defaults.sources));
     setCategories(loadState(`categories:${activeWebsiteId}`, defaults.categories));
     setStatuses(loadState(`statuses:${activeWebsiteId}`, defaults.statuses));
     setStages(loadState(`stages:${activeWebsiteId}`, defaults.stages));
     setFields(loadState(`fields:${activeWebsiteId}`, defaults.fields));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWebsiteId]);
+  }, [activeWebsiteId, defaults]);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -120,6 +131,12 @@ export default function LeadConfig() {
 
   const leadCountBy = (field, value) =>
     LEADS.filter((l) => l.websiteId === activeWebsiteId && l[field] === value).length;
+
+  /* ✅ FIX: total leads across all sources for KPI sub-label */
+  const totalLeadsForWebsite = useMemo(
+    () => LEADS.filter((l) => l.websiteId === activeWebsiteId).length,
+    [activeWebsiteId]
+  );
 
   /* Save all */
   const handleSaveAll = () => {
@@ -131,16 +148,16 @@ export default function LeadConfig() {
     showToast('All changes saved');
   };
 
-  /* Reset all */
+  /* ✅ FIX: clear localStorage BEFORE state update to avoid race */
   const handleResetAll = () => {
+    ['sources', 'categories', 'statuses', 'stages', 'fields'].forEach((k) =>
+      clearState(`${k}:${activeWebsiteId}`)
+    );
     setSources(defaults.sources);
     setCategories(defaults.categories);
     setStatuses(defaults.statuses);
     setStages(defaults.stages);
     setFields(defaults.fields);
-    ['sources', 'categories', 'statuses', 'stages', 'fields'].forEach((k) =>
-      clearState(`${k}:${activeWebsiteId}`)
-    );
     setConfirmReset(false);
     showToast('Reset to defaults');
   };
@@ -166,14 +183,19 @@ export default function LeadConfig() {
     fields: fields.length,
   };
 
+  /* ✅ FIX: KPI sub-label uses total leads, not just first source's count */
+  const sourcesKpiSub =
+    totalLeadsForWebsite > 0
+      ? `${totalLeadsForWebsite} total leads`
+      : 'No leads yet';
+
   return (
-    /* ✨ Ambient background like other pages */
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#FDF8FE] via-white to-[#FBF3FF]">
       <div className="pointer-events-none absolute -top-32 -right-32 h-96 w-96 rounded-full bg-brand-magenta/[0.05] blur-3xl" />
       <div className="pointer-events-none absolute top-1/2 -left-32 h-80 w-80 rounded-full bg-brand-purple/[0.05] blur-3xl" />
 
       <div className="relative space-y-5 px-1 py-1">
-        {/* ═══════════ HEADER ═══════════ */}
+        {/* ═══ HEADER ═══ */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="font-display text-xl font-semibold text-brand-ink">
@@ -202,7 +224,7 @@ export default function LeadConfig() {
           </div>
         </div>
 
-        {/* ═══════════ ENHANCED KPI SUMMARY CARDS ═══════════ */}
+        {/* ═══ KPI SUMMARY CARDS ═══ */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -214,15 +236,14 @@ export default function LeadConfig() {
                 <h2 className="font-display text-sm font-semibold text-brand-ink">Overview</h2>
               </div>
             </div>
-            <p className="text-[11px] text-brand-ink/40">Click a card to switch tab</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             <ConfigKpiCard
               icon={Tag}
               label="Sources"
               value={counts.sources}
-              sub={`${leadCountBy('leadSource', sources[0]?.name) || 0} top source leads`}
+              sub={sourcesKpiSub}
               color="rose"
               active={tab === 'sources'}
               onClick={() => setTab('sources')}
@@ -271,7 +292,7 @@ export default function LeadConfig() {
           </div>
         </div>
 
-        {/* ═══════════ TABS ═══════════ */}
+        {/* ═══ TABS ═══ */}
         <div className="card !p-2">
           <div className="flex flex-wrap items-center gap-1">
             {TABS.map(({ key, label, icon: Icon }) => {
@@ -297,57 +318,77 @@ export default function LeadConfig() {
           </div>
         </div>
 
-        {/* ═══════════ TAB CONTENT ═══════════ */}
+        {/* ═══ TAB CONTENT ═══ */}
         {tab === 'sources' && (
           <SourcesTab
+            websiteId={activeWebsiteId}
             sources={sources}
             setSources={setSources}
             leadCountBy={leadCountBy}
-            onDelete={(s) =>
+            onDelete={(s) => {
+              const usedCount = leadCountBy('leadSource', s.name);
               setConfirmDelete({
-                kind: 'source', id: s.id, name: s.name,
-                message: `This will remove "${s.name}". Leads using it keep their value but new leads can't select it.`,
-              })
-            }
+                kind: 'source',
+                id: s.id,
+                name: s.name,
+                message: usedCount > 0
+                  ? `This will remove "${s.name}". ${usedCount} lead${usedCount === 1 ? '' : 's'} currently use this source — their values will be kept.`
+                  : `This will remove "${s.name}". It isn't used by any leads yet.`,
+              });
+            }}
           />
         )}
 
         {tab === 'categories' && (
           <CategoriesTab
+            websiteId={activeWebsiteId}
             categories={categories}
             setCategories={setCategories}
             leadCountBy={leadCountBy}
-            onDelete={(c) =>
+            onDelete={(c) => {
+              const usedCount = leadCountBy('category', c.name);
               setConfirmDelete({
-                kind: 'category', id: c.id, name: c.name,
-                message: `This will remove "${c.name}". Leads using it keep their value but new leads can't select it.`,
-              })
-            }
+                kind: 'category',
+                id: c.id,
+                name: c.name,
+                message: usedCount > 0
+                  ? `This will remove "${c.name}". ${usedCount} lead${usedCount === 1 ? '' : 's'} currently use this category.`
+                  : `This will remove "${c.name}". It isn't used yet.`,
+              });
+            }}
           />
         )}
 
         {tab === 'statuses' && (
           <StatusesTab
+            websiteId={activeWebsiteId}
             statuses={statuses}
             setStatuses={setStatuses}
             leadCountBy={leadCountBy}
-            onDelete={(s) =>
+            onDelete={(s) => {
+              const usedCount = leadCountBy('status', s.name);
               setConfirmDelete({
-                kind: 'status', id: s.id, name: s.name,
-                message: `This will remove "${s.name}". Leads currently in this status keep their value.`,
-              })
-            }
+                kind: 'status',
+                id: s.id,
+                name: s.name,
+                message: usedCount > 0
+                  ? `This will remove "${s.name}". ${usedCount} lead${usedCount === 1 ? '' : 's'} are currently in this status.`
+                  : `This will remove "${s.name}". It isn't used yet.`,
+              });
+            }}
           />
         )}
 
         {tab === 'stages' && (
           <StagesTab
+            websiteId={activeWebsiteId}
             stages={stages}
             setStages={setStages}
-            leadCountBy={leadCountBy}
             onDelete={(s) =>
               setConfirmDelete({
-                kind: 'stage', id: s.id, name: s.name,
+                kind: 'stage',
+                id: s.id,
+                name: s.name,
                 message: `This will remove "${s.name}" from your pipeline.`,
               })
             }
@@ -356,18 +397,21 @@ export default function LeadConfig() {
 
         {tab === 'fields' && (
           <FieldsTab
+            websiteId={activeWebsiteId}
             fields={fields}
             setFields={setFields}
             onDelete={(f) =>
               setConfirmDelete({
-                kind: 'field', id: f.id, name: f.name,
+                kind: 'field',
+                id: f.id,
+                name: f.name,
                 message: `This will remove "${f.name}". Existing lead values are kept but the field no longer appears on new leads.`,
               })
             }
           />
         )}
 
-        {/* ═══════════ MODALS ═══════════ */}
+        {/* ═══ MODALS ═══ */}
         {confirmDelete && (
           <ConfirmDialog
             title={`Remove ${confirmDelete.kind}?`}
@@ -395,84 +439,30 @@ export default function LeadConfig() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ✨ ENHANCED CONFIG KPI CARD
+   CONFIG KPI CARD
    ═══════════════════════════════════════════════════════════════ */
 function ConfigKpiCard({ icon: Icon, label, value, sub, color = 'rose', active, onClick, delay = 0 }) {
   const displayValue = useAnimatedCount(value);
 
   const themes = {
-    rose:    {
-      border: 'border-rose-200 hover:border-rose-400',
-      bg: 'from-rose-50 via-rose-50/30 to-white',
-      iconBg: 'bg-rose-100 text-brand-magenta border-rose-200',
-      bar: 'from-brand-magenta to-brand-purple',
-      glow: 'bg-brand-magenta/25',
-      shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(227,28,121,0.45)]',
-      valueColor: 'text-brand-magenta',
-      ring: 'ring-rose-300',
-    },
-    purple:  {
-      border: 'border-violet-200 hover:border-violet-400',
-      bg: 'from-violet-50 via-violet-50/30 to-white',
-      iconBg: 'bg-violet-100 text-brand-purple border-violet-200',
-      bar: 'from-brand-purple to-brand-magenta',
-      glow: 'bg-brand-purple/25',
-      shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(139,47,214,0.45)]',
-      valueColor: 'text-brand-purple',
-      ring: 'ring-violet-300',
-    },
-    emerald: {
-      border: 'border-emerald-200 hover:border-emerald-400',
-      bg: 'from-emerald-50 via-emerald-50/30 to-white',
-      iconBg: 'bg-emerald-100 text-emerald-600 border-emerald-200',
-      bar: 'from-emerald-500 to-emerald-400',
-      glow: 'bg-emerald-500/25',
-      shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(16,185,129,0.4)]',
-      valueColor: 'text-emerald-600',
-      ring: 'ring-emerald-300',
-    },
-    amber:   {
-      border: 'border-amber-200 hover:border-amber-400',
-      bg: 'from-amber-50 via-amber-50/30 to-white',
-      iconBg: 'bg-amber-100 text-amber-600 border-amber-200',
-      bar: 'from-amber-500 to-orange-400',
-      glow: 'bg-amber-500/25',
-      shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(245,158,11,0.4)]',
-      valueColor: 'text-amber-600',
-      ring: 'ring-amber-300',
-    },
-    cyan:    {
-      border: 'border-cyan-200 hover:border-cyan-400',
-      bg: 'from-cyan-50 via-cyan-50/30 to-white',
-      iconBg: 'bg-cyan-100 text-cyan-600 border-cyan-200',
-      bar: 'from-cyan-500 to-blue-400',
-      glow: 'bg-cyan-500/25',
-      shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(6,182,212,0.4)]',
-      valueColor: 'text-cyan-600',
-      ring: 'ring-cyan-300',
-    },
+    rose:    { border: 'border-rose-200 hover:border-rose-400', bg: 'from-rose-50 via-rose-50/30 to-white', iconBg: 'bg-rose-100 text-brand-magenta border-rose-200', bar: 'from-brand-magenta to-brand-purple', glow: 'bg-brand-magenta/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(227,28,121,0.45)]', valueColor: 'text-brand-magenta', ring: 'ring-rose-300' },
+    purple:  { border: 'border-violet-200 hover:border-violet-400', bg: 'from-violet-50 via-violet-50/30 to-white', iconBg: 'bg-violet-100 text-brand-purple border-violet-200', bar: 'from-brand-purple to-brand-magenta', glow: 'bg-brand-purple/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(139,47,214,0.45)]', valueColor: 'text-brand-purple', ring: 'ring-violet-300' },
+    emerald: { border: 'border-emerald-200 hover:border-emerald-400', bg: 'from-emerald-50 via-emerald-50/30 to-white', iconBg: 'bg-emerald-100 text-emerald-600 border-emerald-200', bar: 'from-emerald-500 to-emerald-400', glow: 'bg-emerald-500/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(16,185,129,0.4)]', valueColor: 'text-emerald-600', ring: 'ring-emerald-300' },
+    amber:   { border: 'border-amber-200 hover:border-amber-400', bg: 'from-amber-50 via-amber-50/30 to-white', iconBg: 'bg-amber-100 text-amber-600 border-amber-200', bar: 'from-amber-500 to-orange-400', glow: 'bg-amber-500/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(245,158,11,0.4)]', valueColor: 'text-amber-600', ring: 'ring-amber-300' },
+    cyan:    { border: 'border-cyan-200 hover:border-cyan-400', bg: 'from-cyan-50 via-cyan-50/30 to-white', iconBg: 'bg-cyan-100 text-cyan-600 border-cyan-200', bar: 'from-cyan-500 to-blue-400', glow: 'bg-cyan-500/25', shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(6,182,212,0.4)]', valueColor: 'text-cyan-600', ring: 'ring-cyan-300' },
   };
 
-  const t = themes[color];
+  const t = themes[color] || themes.rose;
 
   return (
     <button
       onClick={onClick}
       style={{ animationDelay: `${delay}ms` }}
-      className={`group relative flex flex-col items-start gap-3 overflow-hidden rounded-2xl border-2 bg-gradient-to-br from-white via-white to-brand-mist/30 p-4 text-left shadow-[0_4px_16px_-8px_rgba(139,47,214,0.12)] transition-all duration-300 ease-out hover:-translate-y-1.5 animate-fade-slide-in ${
-        active ? `${t.border} ring-2 ${t.ring} ${t.shadow}` : `${t.border} ${t.shadow}`
-      }`}
+      className={`group relative flex flex-col items-start gap-3 overflow-hidden rounded-2xl border-2 bg-gradient-to-br from-white via-white to-brand-mist/30 p-4 text-left shadow-[0_4px_16px_-8px_rgba(139,47,214,0.12)] transition-all duration-300 ease-out hover:-translate-y-1.5 animate-fade-slide-in ${active ? `${t.border} ring-2 ${t.ring} ${t.shadow}` : `${t.border} ${t.shadow}`}`}
     >
-      {/* Top gradient bar */}
       <span className={`absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${t.bar} transition-transform duration-500 group-hover:scale-x-100 ${active ? 'scale-x-100' : ''}`} />
-
-      {/* Gradient wash on hover */}
       <span className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${t.bg} opacity-0 transition-opacity duration-500 group-hover:opacity-100 ${active ? 'opacity-100' : ''}`} />
-
-      {/* Corner glow */}
       <span className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full ${t.glow} opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100 ${active ? 'opacity-100' : ''}`} />
-
-      {/* Diagonal sheen sweep */}
       <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/50 to-transparent transition-transform duration-1000 group-hover:translate-x-full" />
 
       <div className="relative z-10 flex w-full items-start justify-between gap-2">
@@ -516,17 +506,14 @@ function useAnimatedCount(target, duration = 600) {
 
   useEffect(() => {
     startRef.current = null;
-    const start = performance.now();
-    const from = 0;
     const to = Number(target) || 0;
 
     const tick = (now) => {
       if (startRef.current === null) startRef.current = now;
       const elapsed = now - startRef.current;
       const progress = Math.min(elapsed / duration, 1);
-      // ease-out-cubic
       const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplay(Math.round(from + (to - from) * eased));
+      setDisplay(Math.round(to * eased));
       if (progress < 1) rafRef.current = requestAnimationFrame(tick);
     };
 
@@ -542,7 +529,7 @@ function useAnimatedCount(target, duration = 600) {
 /* ═══════════════════════════════════════════════════════════════
    SOURCES TAB
    ═══════════════════════════════════════════════════════════════ */
-function SourcesTab({ sources, setSources, leadCountBy, onDelete }) {
+function SourcesTab({ websiteId, sources, setSources, leadCountBy, onDelete }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -551,11 +538,9 @@ function SourcesTab({ sources, setSources, leadCountBy, onDelete }) {
   const handleAdd = () => {
     const name = input.trim();
     if (!name) { setError('Please enter a name'); return; }
-    if (sources.some((s) => s.name.toLowerCase() === name.toLowerCase())) {
-      setError('This source already exists');
-      return;
-    }
-    setSources((p) => [...p, { id: uid('src'), name, projectId: null, active: true }]);
+    if (isDuplicate(sources, name)) { setError('This source already exists'); return; }
+    /* ✅ FIX: use activeWebsiteId instead of null */
+    setSources((p) => [...p, { id: uid('src'), name, projectId: websiteId, active: true }]);
     setInput('');
     setError('');
   };
@@ -564,11 +549,9 @@ function SourcesTab({ sources, setSources, leadCountBy, onDelete }) {
 
   const commitEdit = (id) => {
     const name = editValue.trim();
-    if (!name) { setEditingId(null); return; }
-    if (sources.some((s) => s.id !== id && s.name.toLowerCase() === name.toLowerCase())) {
-      setError('Name already used');
-      return;
-    }
+    /* ✅ FIX: give feedback instead of silently closing */
+    if (!name) { setError('Name cannot be empty'); return; }
+    if (isDuplicate(sources, name, id)) { setError('Name already used'); return; }
     setSources((p) => p.map((s) => (s.id === id ? { ...s, name } : s)));
     setEditingId(null);
     setEditValue('');
@@ -656,7 +639,7 @@ function SourcesTab({ sources, setSources, leadCountBy, onDelete }) {
 /* ═══════════════════════════════════════════════════════════════
    CATEGORIES TAB
    ═══════════════════════════════════════════════════════════════ */
-function CategoriesTab({ categories, setCategories, leadCountBy, onDelete }) {
+function CategoriesTab({ websiteId, categories, setCategories, leadCountBy, onDelete }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -665,11 +648,8 @@ function CategoriesTab({ categories, setCategories, leadCountBy, onDelete }) {
   const handleAdd = () => {
     const name = input.trim();
     if (!name) { setError('Please enter a name'); return; }
-    if (categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
-      setError('This category already exists');
-      return;
-    }
-    setCategories((p) => [...p, { id: uid('cat'), name, projectId: null, active: true }]);
+    if (isDuplicate(categories, name)) { setError('This category already exists'); return; }
+    setCategories((p) => [...p, { id: uid('cat'), name, projectId: websiteId, active: true }]);
     setInput('');
     setError('');
   };
@@ -678,11 +658,8 @@ function CategoriesTab({ categories, setCategories, leadCountBy, onDelete }) {
 
   const commitEdit = (id) => {
     const name = editValue.trim();
-    if (!name) { setEditingId(null); return; }
-    if (categories.some((c) => c.id !== id && c.name.toLowerCase() === name.toLowerCase())) {
-      setError('Name already used');
-      return;
-    }
+    if (!name) { setError('Name cannot be empty'); return; }
+    if (isDuplicate(categories, name, id)) { setError('Name already used'); return; }
     setCategories((p) => p.map((c) => (c.id === id ? { ...c, name } : c)));
     setEditingId(null);
     setEditValue('');
@@ -770,7 +747,7 @@ function CategoriesTab({ categories, setCategories, leadCountBy, onDelete }) {
 /* ═══════════════════════════════════════════════════════════════
    STATUSES TAB
    ═══════════════════════════════════════════════════════════════ */
-function StatusesTab({ statuses, setStatuses, leadCountBy, onDelete }) {
+function StatusesTab({ websiteId, statuses, setStatuses, leadCountBy, onDelete }) {
   const [name, setName] = useState('');
   const [color, setColor] = useState('violet');
   const [error, setError] = useState('');
@@ -781,13 +758,10 @@ function StatusesTab({ statuses, setStatuses, leadCountBy, onDelete }) {
   const handleAdd = () => {
     const trimmed = name.trim();
     if (!trimmed) { setError('Please enter a name'); return; }
-    if (statuses.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())) {
-      setError('This status already exists');
-      return;
-    }
+    if (isDuplicate(statuses, trimmed)) { setError('This status already exists'); return; }
     setStatuses((p) => [
       ...p,
-      { id: uid('st'), name: trimmed, color, projectId: null, order: p.length + 1 },
+      { id: uid('st'), name: trimmed, color, projectId: websiteId, order: p.length + 1 },
     ]);
     setName('');
     setColor('violet');
@@ -803,11 +777,8 @@ function StatusesTab({ statuses, setStatuses, leadCountBy, onDelete }) {
 
   const commitEdit = (id) => {
     const trimmed = editValue.trim();
-    if (!trimmed) { setEditingId(null); return; }
-    if (statuses.some((s) => s.id !== id && s.name.toLowerCase() === trimmed.toLowerCase())) {
-      setError('Name already used');
-      return;
-    }
+    if (!trimmed) { setError('Name cannot be empty'); return; }
+    if (isDuplicate(statuses, trimmed, id)) { setError('Name already used'); return; }
     setStatuses((p) => p.map((s) => (s.id === id ? { ...s, name: trimmed, color: editColor } : s)));
     setEditingId(null);
     setEditValue('');
@@ -905,7 +876,7 @@ function StatusesTab({ statuses, setStatuses, leadCountBy, onDelete }) {
 /* ═══════════════════════════════════════════════════════════════
    STAGES TAB
    ═══════════════════════════════════════════════════════════════ */
-function StagesTab({ stages, setStages, onDelete }) {
+function StagesTab({ websiteId, stages, setStages, onDelete }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -914,11 +885,8 @@ function StagesTab({ stages, setStages, onDelete }) {
   const handleAdd = () => {
     const name = input.trim();
     if (!name) { setError('Please enter a name'); return; }
-    if (stages.some((s) => s.name.toLowerCase() === name.toLowerCase())) {
-      setError('This stage already exists');
-      return;
-    }
-    setStages((p) => [...p, { id: uid('stage'), name, projectId: null, order: p.length + 1 }]);
+    if (isDuplicate(stages, name)) { setError('This stage already exists'); return; }
+    setStages((p) => [...p, { id: uid('stage'), name, projectId: websiteId, order: p.length + 1 }]);
     setInput('');
     setError('');
   };
@@ -927,11 +895,8 @@ function StagesTab({ stages, setStages, onDelete }) {
 
   const commitEdit = (id) => {
     const name = editValue.trim();
-    if (!name) { setEditingId(null); return; }
-    if (stages.some((s) => s.id !== id && s.name.toLowerCase() === name.toLowerCase())) {
-      setError('Name already used');
-      return;
-    }
+    if (!name) { setError('Name cannot be empty'); return; }
+    if (isDuplicate(stages, name, id)) { setError('Name already used'); return; }
     setStages((p) => p.map((s) => (s.id === id ? { ...s, name } : s)));
     setEditingId(null);
     setEditValue('');
@@ -1012,7 +977,7 @@ function StagesTab({ stages, setStages, onDelete }) {
 /* ═══════════════════════════════════════════════════════════════
    FIELDS TAB
    ═══════════════════════════════════════════════════════════════ */
-function FieldsTab({ fields, setFields, onDelete }) {
+function FieldsTab({ websiteId, fields, setFields, onDelete }) {
   const [form, setForm] = useState({ name: '', type: 'Text', options: '', required: false });
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -1022,13 +987,21 @@ function FieldsTab({ fields, setFields, onDelete }) {
     setError('');
   };
 
+  /* ✅ FIX: validate dropdown requires at least one option */
+  const validateForm = (name) => {
+    if (!name) return 'Please enter a field name';
+    if (isDuplicate(fields, name, editingId)) return 'This field already exists';
+    if (form.type === 'Dropdown') {
+      const opts = form.options.split(',').map((o) => o.trim()).filter(Boolean);
+      if (opts.length === 0) return 'Dropdown fields need at least one option';
+    }
+    return null;
+  };
+
   const handleAdd = () => {
     const name = form.name.trim();
-    if (!name) { setError('Please enter a field name'); return; }
-    if (fields.some((f) => f.name.toLowerCase() === name.toLowerCase())) {
-      setError('This field already exists');
-      return;
-    }
+    const err = validateForm(name);
+    if (err) { setError(err); return; }
     setFields((p) => [
       ...p,
       {
@@ -1040,7 +1013,7 @@ function FieldsTab({ fields, setFields, onDelete }) {
             ? form.options.split(',').map((o) => o.trim()).filter(Boolean)
             : undefined,
         required: form.required,
-        projectId: null,
+        projectId: websiteId,
       },
     ]);
     resetForm();
@@ -1059,11 +1032,8 @@ function FieldsTab({ fields, setFields, onDelete }) {
 
   const commitEdit = () => {
     const name = form.name.trim();
-    if (!name) { setError('Please enter a field name'); return; }
-    if (fields.some((f) => f.id !== editingId && f.name.toLowerCase() === name.toLowerCase())) {
-      setError('Name already used');
-      return;
-    }
+    const err = validateForm(name);
+    if (err) { setError(err); return; }
     setFields((p) =>
       p.map((f) =>
         f.id === editingId
@@ -1091,7 +1061,6 @@ function FieldsTab({ fields, setFields, onDelete }) {
 
   return (
     <div className="space-y-4">
-      {/* Add / Edit Form */}
       <div className="card !p-5">
         <div className="mb-4 flex items-center gap-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-brand-purple">
@@ -1166,7 +1135,6 @@ function FieldsTab({ fields, setFields, onDelete }) {
         </div>
       </div>
 
-      {/* Fields List */}
       <div className="card !p-0 overflow-hidden">
         <Header icon={ListChecks} iconClass="bg-violet-50 text-brand-purple" title="Existing Fields" subtitle="Fields currently on every lead form" count={fields.length} />
 
@@ -1238,46 +1206,56 @@ function Header({ icon: Icon, iconClass, title, subtitle, count }) {
   );
 }
 
+/* ✅ FIX: guard against undefined handlers */
 function RowActions({ editing, onEdit, onSave, onCancel, onDelete }) {
   if (editing) {
     return (
       <div className="flex shrink-0 items-center gap-1">
-        <button
-          onClick={onSave}
-          className="flex h-8 items-center gap-1 rounded-lg bg-emerald-500 px-3 text-[11px] font-semibold text-white hover:bg-emerald-600"
-        >
-          <Check size={12} /> Save
-        </button>
-        <button
-          onClick={onCancel}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-brand-ink/60 hover:bg-brand-lilac"
-          title="Cancel"
-        >
-          <X size={14} />
-        </button>
+        {onSave && (
+          <button
+            onClick={onSave}
+            className="flex h-8 items-center gap-1 rounded-lg bg-emerald-500 px-3 text-[11px] font-semibold text-white hover:bg-emerald-600"
+          >
+            <Check size={12} /> Save
+          </button>
+        )}
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-brand-ink/60 hover:bg-brand-lilac"
+            title="Cancel"
+          >
+            <X size={14} />
+          </button>
+        )}
       </div>
     );
   }
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <button
-        onClick={onEdit}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-brand-ink/60 hover:bg-brand-lilac hover:text-brand-purple"
-        title="Edit"
-      >
-        <Pencil size={13} />
-      </button>
-      <button
-        onClick={onDelete}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50"
-        title="Delete"
-      >
-        <Trash2 size={13} />
-      </button>
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-brand-ink/60 hover:bg-brand-lilac hover:text-brand-purple"
+          title="Edit"
+        >
+          <Pencil size={13} />
+        </button>
+      )}
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50"
+          title="Delete"
+        >
+          <Trash2 size={13} />
+        </button>
+      )}
     </div>
   );
 }
 
+/* ✅ FIX: capitalise color name in tooltip */
 function ColorPicker({ value, onChange }) {
   const COLORS = Object.keys(STATUS_COLORS);
   return (
@@ -1290,7 +1268,7 @@ function ColorPicker({ value, onChange }) {
           className={`h-5 w-5 rounded-full border-2 transition-all ${
             value === c ? 'ring-2 ring-brand-magenta ring-offset-1 border-white scale-110' : 'border-white hover:scale-110'
           } ${STATUS_COLORS[c].dot}`}
-          title={c}
+          title={c.charAt(0).toUpperCase() + c.slice(1)}
         />
       ))}
     </div>
