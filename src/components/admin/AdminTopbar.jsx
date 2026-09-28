@@ -299,7 +299,7 @@ export default function AdminTopbar({ onMenuClick }) {
                   {[
                     { icon: User, label: 'My Account', to: '/admin/account' },
                     { icon: Settings, label: 'Project Settings', to: '/admin/project-settings' },
-                    { icon: HelpCircle, label: 'Help & Support', to: '/admin/account' },
+                    // { icon: HelpCircle, label: 'Help & Support', to: '/admin/account' },
                   ].map(({ icon: Icon, label, to }) => (
                     <button
                       key={label}

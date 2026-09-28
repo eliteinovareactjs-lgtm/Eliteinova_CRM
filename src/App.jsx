@@ -45,7 +45,6 @@ import AdminLeadConfig from './pages/admin/LeadConfig';
 import AdminLiveCalls from './pages/admin/LiveCalls';
 import AdminProjectSettings from './pages/admin/ProjectSettings';
 import AdminReports from './pages/admin/Reports';
-import AdminSettings from './pages/admin/Settings';
 import AdminTasks from './pages/admin/Tasks';
 import AdminAccount from './pages/admin/Account';
 
@@ -128,7 +127,6 @@ export default function App() {
             <Route path="live-calls" element={<AdminLiveCalls />} />
             <Route path="project-settings" element={<AdminProjectSettings />} />
             <Route path="reports" element={<AdminReports />} />
-            <Route path="settings" element={<AdminSettings />} />
             <Route path="tasks" element={<AdminTasks />} />
             <Route path="account" element={<AdminAccount />} />
           </Route>

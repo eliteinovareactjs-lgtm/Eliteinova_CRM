@@ -1,13 +1,12 @@
 // src/pages/admin/ProjectSettings.jsx
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
-  Building2, Globe, Clock, Bell, Phone, Shield, Save, Check, X,
-  AlertCircle, CheckCircle2, Info, Users, Layers, Tag, ListFilter,
-  GitBranch, Database, MessageSquare, Upload, Palette, Percent,
-  Mail, MapPin, Calendar, Zap, Lock, Eye, EyeOff, Plus, Trash2,
-  Settings as SettingsIcon, FileText, Smartphone, CreditCard,
-  MessageCircle, Send, Filter, Hash, ArrowRight, GripVertical,
-  ChevronRight, Star, Award, Target, Globe2,
+  Building2, Globe, Clock, Bell, Phone, Shield, Save,
+  AlertCircle, CheckCircle2, Info, Users, Layers, ListFilter,
+  GitBranch, Database, MessageSquare, Upload, Palette,
+  Mail, Calendar, Zap, Lock, Plus, Trash2,
+  Settings as SettingsIcon, FileText, Smartphone,
+  Hash, ArrowRight, GripVertical, Target, Globe2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -292,10 +291,8 @@ export default function ProjectSettings() {
       permissions,
     };
     try {
-      localStorage.setItem(
-        `projectSettings:${activeWebsiteId}`,
-        JSON.stringify(payload)
-      );
+      const key = `projectSettings:${activeWebsiteId ?? 'default'}`;
+      localStorage.setItem(key, JSON.stringify(payload));
       showToast('Settings saved successfully');
     } catch {
       showToast('Failed to save settings', 'error');
@@ -350,7 +347,13 @@ export default function ProjectSettings() {
       </div>
 
       {/* TAB CONTENT */}
-      {tab === 'profile'       && <ProfileTab profile={profile} setProfile={setProfile} />}
+      {tab === 'profile'       && (
+        <ProfileTab
+          profile={profile}
+          setProfile={setProfile}
+          showToast={showToast}
+        />
+      )}
       {tab === 'business'      && (
         <BusinessTab
           hours={hours} setHours={setHours}
@@ -402,16 +405,20 @@ export default function ProjectSettings() {
 /* ═══════════════════════════════════════════════════════════════
    TAB 1 — PROFILE
    ═══════════════════════════════════════════════════════════════ */
-function ProfileTab({ profile, setProfile }) {
+function ProfileTab({ profile, setProfile, showToast }) {
   const handleLogoUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      alert('File must be under 2MB');
+      showToast('File must be under 2MB', 'error');
       return;
     }
     const reader = new FileReader();
-    reader.onload = (ev) => setProfile({ ...profile, logo: ev.target.result });
+    reader.onload = (ev) => {
+      setProfile({ ...profile, logo: ev.target.result });
+      showToast('Logo uploaded');
+    };
+    reader.onerror = () => showToast('Failed to read file', 'error');
     reader.readAsDataURL(file);
   };
 
@@ -435,7 +442,10 @@ function ProfileTab({ profile, setProfile }) {
           </label>
           {profile.logo && (
             <button
-              onClick={() => setProfile({ ...profile, logo: null })}
+              onClick={() => {
+                setProfile({ ...profile, logo: null });
+                showToast('Logo removed', 'error');
+              }}
               className="text-[11px] font-semibold text-rose-500 hover:underline"
             >
               Remove logo
@@ -708,13 +718,13 @@ function LeadSettingsTab({ settings, setSettings }) {
    TAB 4 — STATUS SETTINGS
    ═══════════════════════════════════════════════════════════════ */
 const COLOR_OPTIONS = [
-  { key: 'violet',  chip: 'bg-violet-100 text-brand-purple' },
-  { key: 'amber',   chip: 'bg-amber-100 text-amber-600' },
-  { key: 'emerald', chip: 'bg-emerald-100 text-emerald-600' },
-  { key: 'rose',    chip: 'bg-rose-100 text-brand-magenta' },
-  { key: 'indigo',  chip: 'bg-indigo-100 text-indigo-600' },
-  { key: 'slate',   chip: 'bg-slate-100 text-slate-600' },
-  { key: 'cyan',    chip: 'bg-cyan-100 text-cyan-600' },
+  { key: 'violet',  label: 'Violet',  chip: 'bg-violet-100 text-brand-purple' },
+  { key: 'amber',   label: 'Amber',   chip: 'bg-amber-100 text-amber-600' },
+  { key: 'emerald', label: 'Emerald', chip: 'bg-emerald-100 text-emerald-600' },
+  { key: 'rose',    label: 'Rose',    chip: 'bg-rose-100 text-brand-magenta' },
+  { key: 'indigo',  label: 'Indigo',  chip: 'bg-indigo-100 text-indigo-600' },
+  { key: 'slate',   label: 'Slate',   chip: 'bg-slate-100 text-slate-600' },
+  { key: 'cyan',    label: 'Cyan',    chip: 'bg-cyan-100 text-cyan-600' },
 ];
 
 function StatusSettingsTab({ statuses, addStatus, removeStatus, newStatus, setNewStatus }) {
@@ -774,7 +784,7 @@ function StatusSettingsTab({ statuses, addStatus, removeStatus, newStatus, setNe
               className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-purple"
             >
               {COLOR_OPTIONS.map((c) => (
-                <option key={c.key} value={c.key}>{c.key}</option>
+                <option key={c.key} value={c.key}>{c.label}</option>
               ))}
             </select>
           </div>
@@ -1546,7 +1556,9 @@ function Field({ label, value, onChange, type = 'text', icon: Icon, placeholder 
           type={type}
           value={value}
           placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) =>
+            onChange(type === 'number' ? Number(e.target.value) : e.target.value)
+          }
           className={`w-full rounded-xl border border-brand-lilac bg-white py-2.5 text-sm outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/15 ${
             Icon ? 'pl-10 pr-3.5' : 'px-3.5'
           }`}
