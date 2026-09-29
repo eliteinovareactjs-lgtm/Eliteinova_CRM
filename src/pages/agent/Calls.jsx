@@ -3,19 +3,18 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneCall,
   Clock, User, Mic, MicOff, Play, Pause, X, Headphones, Search,
-  ChevronDown, Delete, Volume2, VolumeX, PauseCircle, PlayCircle,
-  ArrowRightLeft, PhoneOff, FileAudio, Download, Filter, Calendar,
+  ChevronDown, Volume2, VolumeX, PauseCircle, PlayCircle,
+  ArrowRightLeft, PhoneOff, FileAudio, Download, Calendar,
   StickyNote, CheckCircle2, AlertCircle, ListFilter, Inbox, History,
-  Grid3x3, List, Tag, TrendingUp, Users,
+  Tag, TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { CALLS, LEADS } from '../../data/mockData';
+import { CALLS } from '../../data/mockData';
 
 /* ================================================================
    CONSTANTS
    ================================================================ */
 const CALL_TABS = [
-  { key: 'dialpad',    label: 'Dial Pad',        icon: PhoneCall },
   { key: 'inbound',    label: 'Inbound Calls',   icon: PhoneIncoming },
   { key: 'outbound',   label: 'Outbound Calls',  icon: PhoneOutgoing },
   { key: 'missed',     label: 'Missed Calls',    icon: PhoneMissed },
@@ -27,13 +26,6 @@ const DISPOSITIONS = [
   'Connected', 'No Answer', 'Busy', 'Call Back', 'Interested',
   'Not Interested', 'Wrong Number', 'Converted', 'Follow-Up Required',
   'Customer Requested Information', 'Other',
-];
-
-const DIAL_KEYS = [
-  '1', '2', '3',
-  '4', '5', '6',
-  '7', '8', '9',
-  '*', '0', '#',
 ];
 
 const STATUS_STYLES = {
@@ -49,7 +41,7 @@ const STATUS_STYLES = {
 export default function Calls() {
   const { user, activeWebsiteId } = useAuth();
 
-  const [activeTab, setActiveTab] = useState('dialpad');
+  const [activeTab, setActiveTab] = useState('inbound');
   const [searchQuery, setSearchQuery] = useState('');
   const [directionFilter, setDirectionFilter] = useState('all');
   const [selectedCall, setSelectedCall] = useState(null);
@@ -117,7 +109,8 @@ export default function Calls() {
     setInCall({
       name: target.name || target.customer || 'Unknown',
       mobile: target.mobile || target.phone,
-      leadId: target.id,
+      leadId: target.id || target.leadId,
+      direction: target.direction || 'outgoing',
       startedAt: Date.now(),
     });
   };
@@ -129,9 +122,10 @@ export default function Calls() {
       mobile: inCall.mobile,
       leadId: inCall.leadId,
       type: payload.direction === 'incoming' ? 'inbound' : 'outbound',
-      status: payload.disposition === 'No Answer' || payload.disposition === 'Missed'
-        ? 'missed'
-        : 'connected',
+      status:
+        payload.disposition === 'No Answer' || payload.disposition === 'Missed'
+          ? 'missed'
+          : 'connected',
       duration: payload.duration,
       outcome: payload.disposition,
       notes: payload.notes,
@@ -180,28 +174,19 @@ export default function Calls() {
 
       <div className="relative space-y-5 px-1 py-1">
         {/* ================= HEADER ================= */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="font-display text-xl font-semibold text-brand-ink">Calls</h1>
-            <p className="text-sm text-brand-ink/50">
-              Dial, receive, and log every call from one place.
-            </p>
-          </div>
-
-          <button
-            onClick={() => setActiveTab('dialpad')}
-            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-4 py-2 text-xs font-semibold text-white shadow-card hover:brightness-110"
-          >
-            <PhoneCall size={14} /> New Call
-          </button>
+        <div>
+          <h1 className="font-display text-xl font-semibold text-brand-ink">Calls</h1>
+          <p className="text-sm text-brand-ink/50">
+            Review inbound, outbound, missed, and recorded calls.
+          </p>
         </div>
 
         {/* ================= KPI STRIP ================= */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          <AnimatedStatCard label="Total Calls"  value={summary.total}      sub="All time"       icon={PhoneCall}     color="purple" trend="+8%"  trendUp delay={0} />
-          <AnimatedStatCard label="Connected"    value={summary.connected}  sub="Successful"     icon={CheckCircle2}  color="emerald" trend="+5"  trendUp delay={40} />
-          <AnimatedStatCard label="Missed"       value={summary.missed}     sub="Need callback"  icon={PhoneMissed}   color="rose"   trend="-2"  trendUp={false} delay={80} />
-          <AnimatedStatCard label="Recordings"   value={summary.recordings} sub="Available"      icon={FileAudio}     color="amber"  trend="+3"  trendUp delay={120} />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <AnimatedStatCard label="Total Calls" value={summary.total}     sub="All time"      icon={PhoneCall}    color="purple" trend="+8%" trendUp delay={0} />
+          <AnimatedStatCard label="Connected"   value={summary.connected} sub="Successful"    icon={CheckCircle2} color="emerald" trend="+5" trendUp delay={40} />
+          <AnimatedStatCard label="Missed"      value={summary.missed}    sub="Need callback" icon={PhoneMissed}  color="rose" trend="-2" trendUp={false} delay={80} />
+          <AnimatedStatCard label="Recordings"  value={summary.recordings} sub="Available"    icon={FileAudio}    color="amber" trend="+3" trendUp delay={120} />
         </div>
 
         {/* ================= TABS ================= */}
@@ -228,63 +213,56 @@ export default function Calls() {
           </div>
         </div>
 
-        {/* ================= TAB CONTENT ================= */}
-        {activeTab === 'dialpad' ? (
-          <DialPadPanel onStartCall={handleStartCall} />
-        ) : (
-          <>
-            {/* Search + filter bar (hidden on dialpad) */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative min-w-[220px] flex-1">
-                <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-ink/40" />
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by customer, mobile, outcome..."
-                  className="w-full rounded-full border border-brand-lilac bg-white py-2.5 pl-11 pr-10 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-brand-lilac"
-                  >
-                    <X size={14} className="text-brand-ink/50" />
-                  </button>
-                )}
-              </div>
-
-              {(activeTab === 'history' || activeTab === 'recordings') && (
-                <DropdownFilter
-                  label="Direction"
-                  icon={ArrowRightLeft}
-                  value={directionFilter}
-                  options={['all', 'inbound', 'outbound']}
-                  onChange={setDirectionFilter}
-                />
-              )}
-
-              <span className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-4 py-2.5 text-sm font-semibold text-brand-ink">
-                <ListFilter size={14} className="text-brand-magenta" />
-                Showing: <span className="text-brand-magenta">{filteredCalls.length}</span>
-              </span>
-            </div>
-
-            {/* Calls list */}
-            {filteredCalls.length === 0 ? (
-              <EmptyState tab={activeTab} />
-            ) : (
-              <div className="space-y-2">
-                {filteredCalls.map((call) => (
-                  <CallRow
-                    key={call.id}
-                    call={call}
-                    onView={() => setSelectedCall(call)}
-                    onCall={() => handleStartCall(call)}
-                  />
-                ))}
-              </div>
+        {/* ================= SEARCH + FILTER ================= */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[220px] flex-1">
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-ink/40" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by customer, mobile, outcome..."
+              className="w-full rounded-full border border-brand-lilac bg-white py-2.5 pl-11 pr-10 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-brand-lilac"
+              >
+                <X size={14} className="text-brand-ink/50" />
+              </button>
             )}
-          </>
+          </div>
+
+          {(activeTab === 'history' || activeTab === 'recordings') && (
+            <DropdownFilter
+              label="Direction"
+              icon={ArrowRightLeft}
+              value={directionFilter}
+              options={['all', 'inbound', 'outbound']}
+              onChange={setDirectionFilter}
+            />
+          )}
+
+          <span className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-4 py-2.5 text-sm font-semibold text-brand-ink">
+            <ListFilter size={14} className="text-brand-magenta" />
+            Showing: <span className="text-brand-magenta">{filteredCalls.length}</span>
+          </span>
+        </div>
+
+        {/* ================= CALLS LIST ================= */}
+        {filteredCalls.length === 0 ? (
+          <EmptyState tab={activeTab} />
+        ) : (
+          <div className="space-y-2">
+            {filteredCalls.map((call) => (
+              <CallRow
+                key={call.id}
+                call={call}
+                onView={() => setSelectedCall(call)}
+                onCall={() => handleStartCall({ ...call, direction: 'outgoing' })}
+              />
+            ))}
+          </div>
         )}
 
         {/* ================= DRAWERS / MODALS ================= */}
@@ -300,7 +278,16 @@ export default function Calls() {
           <CallDetailDrawer
             call={selectedCall}
             onClose={() => setSelectedCall(null)}
-            onCall={() => { setInCall(selectedCall); setSelectedCall(null); }}
+            onCall={() => {
+              setInCall({
+                name: selectedCall.customer || 'Unknown',
+                mobile: selectedCall.mobile,
+                leadId: selectedCall.leadId,
+                direction: 'outgoing',
+                startedAt: Date.now(),
+              });
+              setSelectedCall(null);
+            }}
           />
         )}
 
@@ -321,177 +308,6 @@ export default function Calls() {
         )}
 
         {toast && <Toast message={toast.msg} type={toast.type} />}
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================
-   DIAL PAD PANEL
-   ================================================================ */
-function DialPadPanel({ onStartCall }) {
-  const [number, setNumber] = useState('');
-  const [matchedLead, setMatchedLead] = useState(null);
-
-  /* Try to auto-match against known leads */
-  useEffect(() => {
-    const clean = number.replace(/\D/g, '');
-    if (clean.length >= 6) {
-      const match = (LEADS || []).find((l) => l.mobile === clean || l.mobile?.endsWith(clean));
-      setMatchedLead(match || null);
-    } else {
-      setMatchedLead(null);
-    }
-  }, [number]);
-
-  const press = (k) => setNumber((n) => (n + k).slice(0, 15));
-  const backspace = () => setNumber((n) => n.slice(0, -1));
-  const clear = () => setNumber('');
-
-  const canCall = number.replace(/\D/g, '').length >= 6;
-
-  const handleCall = () => {
-    if (!canCall) return;
-    onStartCall({
-      name: matchedLead?.name || 'Unknown Number',
-      mobile: number,
-      id: matchedLead?.id,
-    });
-  };
-
-  return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      {/* Dial pad */}
-      <div className="card lg:col-span-2">
-        <div className="mb-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card">
-              <PhoneCall size={18} />
-            </span>
-            <div>
-              <h2 className="font-display text-base font-bold text-brand-ink">Dial Pad</h2>
-              <p className="text-xs text-brand-ink/50">Enter a number to start a call</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-600">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            Ready
-          </div>
-        </div>
-
-        {/* Number display */}
-        <div className="relative mb-5">
-          <input
-            value={number}
-            onChange={(e) => setNumber(e.target.value.replace(/[^\d+*#]/g, ''))}
-            placeholder="Enter phone number"
-            className="w-full rounded-2xl border-2 border-brand-lilac bg-white py-4 pl-5 pr-24 text-center font-display text-2xl font-bold tracking-wider text-brand-ink outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
-          />
-          <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1">
-            {number && (
-              <button
-                onClick={backspace}
-                className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac"
-                title="Backspace"
-              >
-                <Delete size={16} />
-              </button>
-            )}
-            {number && (
-              <button
-                onClick={clear}
-                className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
-                title="Clear"
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Matched lead */}
-        {matchedLead && (
-          <div className="mb-5 flex items-center gap-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-magenta to-brand-purple text-[10px] font-bold text-white">
-              {matchedLead.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-brand-ink">{matchedLead.name}</p>
-              <p className="truncate text-xs text-brand-ink/50">
-                {matchedLead.mobile} · {matchedLead.leadSource}
-              </p>
-            </div>
-            <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-brand-purple">
-              Lead found
-            </span>
-          </div>
-        )}
-
-        {/* Keypad */}
-        <div className="mx-auto grid max-w-sm grid-cols-3 gap-3">
-          {DIAL_KEYS.map((k) => (
-            <button
-              key={k}
-              onClick={() => press(k)}
-              className="group relative flex h-16 items-center justify-center rounded-2xl border border-brand-lilac bg-white font-display text-xl font-bold text-brand-ink shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta active:scale-95"
-            >
-              {k}
-            </button>
-          ))}
-        </div>
-
-        {/* Call button */}
-        <button
-          onClick={handleCall}
-          disabled={!canCall}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-4 text-sm font-bold text-white shadow-card transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <PhoneCall size={18} /> Call {number && `· ${number}`}
-        </button>
-
-        <p className="mt-3 text-center text-[10px] text-brand-ink/40">
-          Recording indicator • Add note • Call disposition • Schedule follow-up
-        </p>
-      </div>
-
-      {/* Side panel */}
-      <div className="space-y-4">
-        <div className="card">
-          <h3 className="mb-3 font-display text-sm font-semibold text-brand-ink">
-            Quick Tips
-          </h3>
-          <ul className="space-y-2 text-xs text-brand-ink/70">
-            <li className="flex items-start gap-2">
-              <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-500" />
-              Type or paste any number — matched leads appear instantly.
-            </li>
-            <li className="flex items-start gap-2">
-              <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-500" />
-              Every call opens the call panel with mute, hold, transfer, and end.
-            </li>
-            <li className="flex items-start gap-2">
-              <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-500" />
-              Pick a disposition and optionally schedule a follow-up right after.
-            </li>
-            <li className="flex items-start gap-2">
-              <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-500" />
-              Recordings are saved under the customer timeline automatically.
-            </li>
-          </ul>
-        </div>
-
-        <div className="card bg-gradient-to-br from-brand-magenta/[0.06] to-brand-purple/[0.04]">
-          <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-brand-magenta">
-            Incoming Call
-          </p>
-          <p className="mt-1 text-sm font-semibold text-brand-ink">
-            When someone calls your IVR line
-          </p>
-          <p className="mt-1 text-xs text-brand-ink/60">
-            A popup will appear with caller ID and matched lead details.
-          </p>
-        </div>
       </div>
     </div>
   );
@@ -576,7 +392,9 @@ function CallRow({ call, onView, onCall }) {
 }
 
 /* ================================================================
-   IN-CALL MODAL (mute / hold / transfer / end / timer / recording)
+   IN-CALL MODAL
+   Features: Transfer · End Call · Timer · Recording indicator ·
+             Add Note · Call Disposition
    ================================================================ */
 function CallModal({ target, onClose, onEnd }) {
   const [callState, setCallState] = useState('ringing');
@@ -623,7 +441,6 @@ function CallModal({ target, onClose, onEnd }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-panel">
-        {/* Header */}
         <div className={`relative px-6 pb-8 pt-8 text-center text-white ${
           callState === 'connected'
             ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
@@ -636,7 +453,6 @@ function CallModal({ target, onClose, onEnd }) {
             <X size={18} />
           </button>
 
-          {/* Recording indicator */}
           {recording && (
             <div className="absolute left-4 top-4 flex items-center gap-1.5 rounded-full bg-rose-500/90 px-2.5 py-1 text-[10px] font-bold">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
@@ -659,7 +475,6 @@ function CallModal({ target, onClose, onEnd }) {
         </div>
 
         <div className="p-6">
-          {/* Controls */}
           {callState === 'connected' && (
             <div className="mb-5 grid grid-cols-3 gap-3 sm:grid-cols-5">
               <CallControl
@@ -695,7 +510,6 @@ function CallModal({ target, onClose, onEnd }) {
             </div>
           )}
 
-          {/* Transfer picker */}
           {transferOpen && callState === 'connected' && (
             <div className="mb-5 rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand-ink/50">
@@ -719,7 +533,6 @@ function CallModal({ target, onClose, onEnd }) {
             </div>
           )}
 
-          {/* Notes + disposition */}
           {callState === 'connected' && (
             <div className="mb-5 space-y-3">
               <div>
@@ -751,7 +564,6 @@ function CallModal({ target, onClose, onEnd }) {
             </div>
           )}
 
-          {/* End call */}
           {callState === 'ringing' ? (
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -810,8 +622,8 @@ function CallDetailDrawer({ call, onClose, onCall }) {
   const mobile = call.mobile || call.phone || '—';
 
   const pastCalls = [
-    { id: 1, type: 'inbound',  duration: '2:14', date: 'Today · 9:30 AM',      outcome: 'Discussed pricing' },
-    { id: 2, type: 'outbound', duration: '0:52', date: 'Yesterday · 3:45 PM',  outcome: 'Follow-up callback' },
+    { id: 1, type: 'inbound',  duration: '2:14', date: 'Today · 9:30 AM',     outcome: 'Discussed pricing' },
+    { id: 2, type: 'outbound', duration: '0:52', date: 'Yesterday · 3:45 PM', outcome: 'Follow-up callback' },
   ];
 
   return (
@@ -831,7 +643,6 @@ function CallDetailDrawer({ call, onClose, onCall }) {
         </div>
 
         <div className="space-y-5 p-5">
-          {/* Caller */}
           <div className="flex items-center gap-3">
             <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-brand-magenta to-brand-purple text-sm font-bold text-white">
               {customer.split(' ').map((n) => n[0]).slice(0, 2).join('')}
@@ -845,7 +656,6 @@ function CallDetailDrawer({ call, onClose, onCall }) {
             </span>
           </div>
 
-          {/* Summary grid */}
           <div className="grid grid-cols-2 gap-3">
             <InfoBox label="Duration" value={call.duration || '—'} />
             <InfoBox label="Type"     value={type} />
@@ -853,7 +663,6 @@ function CallDetailDrawer({ call, onClose, onCall }) {
             <InfoBox label="Agent"    value={call.agentName || call.agent || 'You'} />
           </div>
 
-          {/* Notes */}
           {call.notes && (
             <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
               <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink/50">
@@ -863,7 +672,6 @@ function CallDetailDrawer({ call, onClose, onCall }) {
             </div>
           )}
 
-          {/* Recording */}
           {(call.recording || call.recordingUrl) && (
             <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
@@ -882,7 +690,6 @@ function CallDetailDrawer({ call, onClose, onCall }) {
             </div>
           )}
 
-          {/* Actions */}
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={onCall}
@@ -895,7 +702,6 @@ function CallDetailDrawer({ call, onClose, onCall }) {
             </button>
           </div>
 
-          {/* Past recordings */}
           <div>
             <div className="mb-3 flex items-center justify-between">
               <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
@@ -1132,7 +938,7 @@ function EmptyState({ tab }) {
         {messages[tab] || 'No calls to display'}
       </p>
       <p className="max-w-sm text-sm text-brand-ink/50">
-        Start a new call from the Dial Pad to see records appear here.
+        Records will appear here as calls are made or received.
       </p>
     </div>
   );
