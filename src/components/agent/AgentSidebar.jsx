@@ -1,31 +1,49 @@
 // src/components/agent/AgentSidebar.jsx
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  Phone,
-  ClipboardList,
-  Headphones,
-  LogOut,
-  Menu,
-  HelpCircle,
+  LayoutDashboard, Users, Phone, CalendarCheck, Megaphone,
+  Bell, CheckSquare, MessageSquare, PhoneCall, Search,
+  BarChart3, User, Menu, Headphones,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-const NAV = [
-  { to: '/agent/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/agent/live-calls', label: 'Live Calls', icon: Phone },
-  { to: '/agent/leads', label: 'My Leads', icon: ClipboardList },
+const NAV_GROUPS = [
+  {
+    label: 'Overview',
+    items: [
+      { to: '/agent/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Workspace',
+    items: [
+      { to: '/agent/leads',      label: 'My Leads',   icon: Users },
+      { to: '/agent/calls',      label: 'Calls',      icon: Phone },
+      { to: '/agent/follow-ups', label: 'Follow-Ups', icon: CalendarCheck },
+      { to: '/agent/campaigns',  label: 'Campaigns',  icon: Megaphone },
+    ],
+  },
+  {
+    label: 'Productivity',
+    items: [
+      { to: '/agent/reminders',     label: 'Reminders',     icon: Bell },
+      { to: '/agent/tasks',         label: 'My Tasks',      icon: CheckSquare },
+      { to: '/agent/communication', label: 'Communication', icon: MessageSquare },
+      { to: '/agent/call-records',  label: 'Call Records',  icon: PhoneCall },
+    ],
+  },
+  {
+    label: 'Tools',
+    items: [
+      { to: '/agent/search',      label: 'Search',         icon: Search },
+      { to: '/agent/performance', label: 'My Performance', icon: BarChart3 },
+      { to: '/agent/account',     label: 'My Account',     icon: User },
+    ],
+  },
 ];
 
 export default function AgentSidebar({ open, collapsed, onToggleCollapse, onClose }) {
-  const { user, role, activeWebsite, logout } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
-
+  const { activeWebsite } = useAuth();
   const width = collapsed ? 'w-20' : 'w-64';
 
   return (
@@ -43,8 +61,8 @@ export default function AgentSidebar({ open, collapsed, onToggleCollapse, onClos
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* ================= BRAND + HAMBURGER TOGGLE ================= */}
-        <div className="flex items-center justify-between gap-2 border-b border-brand-lilac/60 px-4 py-5">
+        {/* Brand + toggle */}
+        <div className="flex items-center justify-between gap-2 border-b border-brand-lilac/60 px-4 py-4">
           <div className="flex items-center gap-2 overflow-hidden">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-purple to-brand-magenta text-white shadow-card">
               <Headphones size={18} />
@@ -61,7 +79,6 @@ export default function AgentSidebar({ open, collapsed, onToggleCollapse, onClos
             )}
           </div>
 
-          {/* Hamburger toggle — desktop collapse */}
           <button
             onClick={onToggleCollapse}
             className="hidden rounded-lg p-1.5 text-brand-ink/60 hover:bg-brand-lilac md:flex"
@@ -69,8 +86,6 @@ export default function AgentSidebar({ open, collapsed, onToggleCollapse, onClos
           >
             <Menu size={18} />
           </button>
-
-          {/* Mobile close — also 3 lines */}
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-brand-ink/60 hover:bg-brand-lilac md:hidden"
@@ -80,74 +95,38 @@ export default function AgentSidebar({ open, collapsed, onToggleCollapse, onClos
           </button>
         </div>
 
-        {/* ================= NAVIGATION (no scroll) ================= */}
-        <nav className="flex-1 min-h-0 space-y-1 px-3 py-4">
-          {NAV.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={onClose}
-              title={collapsed ? label : ''}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-gradient-to-r from-brand-purple to-brand-magenta text-white shadow-card'
-                    : 'text-brand-ink/60 hover:bg-brand-lilac hover:text-brand-purple'
-                } ${collapsed ? 'justify-center' : ''}`
-              }
-            >
-              <Icon size={18} className="shrink-0" />
-              {!collapsed && <span>{label}</span>}
-            </NavLink>
+        {/* Grouped nav — now the only scrollable area, fills remaining height */}
+        <nav className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label}>
+              {!collapsed && (
+                <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-brand-ink/40">
+                  {group.label}
+                </p>
+              )}
+              <div className="space-y-1">
+                {group.items.map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    onClick={onClose}
+                    title={collapsed ? label : ''}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                        isActive
+                          ? 'bg-gradient-to-r from-brand-purple to-brand-magenta text-white shadow-card'
+                          : 'text-brand-ink/60 hover:bg-brand-lilac hover:text-brand-purple'
+                      } ${collapsed ? 'justify-center' : ''}`
+                    }
+                  >
+                    <Icon size={18} className="shrink-0" />
+                    {!collapsed && <span>{label}</span>}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
-
-        {/* ================= HELP ================= */}
-        <div className="px-3 pb-3">
-          <button
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-brand-ink/60 hover:bg-brand-lilac hover:text-brand-purple ${
-              collapsed ? 'justify-center' : ''
-            }`}
-            title={collapsed ? 'Help & Support' : ''}
-          >
-            <HelpCircle size={18} className="shrink-0" />
-            {!collapsed && <span>Help &amp; Support</span>}
-          </button>
-        </div>
-
-        {/* ================= USER + ROLE + LOGOUT ================= */}
-        <div className="border-t border-brand-lilac/60 p-3">
-          <div
-            className={`flex items-center gap-3 rounded-xl bg-brand-lilac/40 px-3 py-3 ${
-              collapsed ? 'justify-center' : ''
-            }`}
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-purple to-brand-magenta text-xs font-bold text-white">
-              {user?.avatar || 'AG'}
-            </span>
-            {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-brand-ink">
-                  {user?.name || 'Agent'}
-                </p>
-                <p className="truncate text-[10px] capitalize text-brand-ink/50">
-                  {role} • Scoped to your leads
-                </p>
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={handleLogout}
-            className={`mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-rose-500 hover:bg-rose-50 ${
-              collapsed ? 'justify-center' : ''
-            }`}
-            title={collapsed ? 'Sign out' : ''}
-          >
-            <LogOut size={18} className="shrink-0" />
-            {!collapsed && <span>Sign out</span>}
-          </button>
-        </div>
       </aside>
     </>
   );

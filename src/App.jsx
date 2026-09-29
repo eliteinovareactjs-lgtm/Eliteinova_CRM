@@ -49,19 +49,26 @@ import AdminTasks from './pages/admin/Tasks';
 import AdminAccount from './pages/admin/Account';
 
 // ==================== AGENT PAGES ====================
+// Imported with "Agent" prefix to avoid name collisions with superadmin pages
 import AgentDashboard from './pages/agent/AgentDashboard';
 import MyLeads from './pages/agent/MyLeads';
-import AgentLiveCalls from './pages/agent/LiveCalls';
+import AgentCalls from './pages/agent/Calls';
+import AgentFollowUps from './pages/agent/FollowUps';
+import AgentCampaigns from './pages/agent/Campaigns';
+import AgentReminders from './pages/agent/Reminders';
+import AgentTasks from './pages/agent/Tasks';
+import AgentCommunication from './pages/agent/Communication';
+import AgentCallRecords from './pages/agent/CallRecords';
+import AgentSearch from './pages/agent/Search';
+import AgentPerformance from './pages/agent/Performance';
+import AgentAccount from './pages/agent/Account';
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Default redirect */}
           <Route path="/" element={<Navigate to="/login" replace />} />
-
-          {/* Login */}
           <Route path="/login" element={<Login />} />
 
           {/* ==================== SUPER ADMIN ==================== */}
@@ -74,30 +81,20 @@ export default function App() {
             }
           >
             <Route index element={<Navigate to="/superadmin/dashboard" replace />} />
-
-            {/* Overview */}
             <Route path="dashboard" element={<SuperAdminDashboard />} />
-
-            {/* Platform */}
             <Route path="projects" element={<Projects />} />
             <Route path="admins" element={<Admins />} />
             <Route path="agents" element={<SuperAdminAgents />} />
             <Route path="customers" element={<Customers />} />
-
-            {/* Operations */}
             <Route path="leads" element={<SuperAdminLeads />} />
             <Route path="calling" element={<Calling />} />
             <Route path="live-calls" element={<SuperAdminLiveCalls />} />
             <Route path="ivr" element={<IVR />} />
             <Route path="campaigns" element={<Campaigns />} />
             <Route path="follow-ups" element={<FollowUps />} />
-
-            {/* Communication */}
             <Route path="communication" element={<Communication />} />
             <Route path="credits" element={<Credits />} />
             <Route path="integrations" element={<Integrations />} />
-
-            {/* System */}
             <Route path="reports" element={<SuperAdminReports />} />
             <Route path="security" element={<Security />} />
             <Route path="logs" element={<Logs />} />
@@ -141,12 +138,23 @@ export default function App() {
             }
           >
             <Route index element={<Navigate to="/agent/dashboard" replace />} />
-            <Route path="dashboard" element={<AgentDashboard />} />
-            <Route path="leads" element={<MyLeads />} />
-            <Route path="live-calls" element={<AgentLiveCalls />} />
+
+            {/* -------- sidebar 1:1 -------- */}
+            <Route path="dashboard"     element={<AgentDashboard />} />
+            <Route path="leads"         element={<MyLeads />} />
+            <Route path="calls"         element={<AgentCalls />} />
+            <Route path="follow-ups"    element={<AgentFollowUps />} />
+            <Route path="campaigns"     element={<AgentCampaigns />} />
+            <Route path="reminders"     element={<AgentReminders />} />
+            <Route path="tasks"         element={<AgentTasks />} />
+            <Route path="communication" element={<AgentCommunication />} />
+            <Route path="call-records"  element={<AgentCallRecords />} />
+            <Route path="search"        element={<AgentSearch />} />
+            <Route path="performance"   element={<AgentPerformance />} />
+            <Route path="account"       element={<AgentAccount />} />
+
           </Route>
 
-          {/* 404 — redirect to login */}
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>

@@ -395,6 +395,25 @@ export const DAILY_CALL_TREND = [
   { day: 'Sep 10', calls: 1 },
 ];
 
+// appended to src/data/mockData.js
+export const TODAY_FOLLOWUPS = [
+  { id: 1, name: 'Customer A', time: '10:00 AM', purpose: 'Callback' },
+  { id: 2, name: 'Customer B', time: '11:30 AM', purpose: 'Product enquiry' },
+  { id: 3, name: 'Customer C', time: '02:00 PM', purpose: 'Payment follow-up' },
+];
+
+export const RECENT_CALLS = [
+  { id: 1, name: 'Customer B', type: 'outbound', outcome: 'Interested', duration: '04:20' },
+  { id: 2, name: 'Customer C', type: 'inbound',  outcome: 'Connected',  duration: '02:15' },
+  { id: 3, name: 'Customer D', type: 'missed',   outcome: 'No Answer',  duration: '00:00' },
+];
+
+export const CALL_DISPOSITIONS = [
+  'Connected', 'No Answer', 'Busy', 'Call Back', 'Interested',
+  'Not Interested', 'Wrong Number', 'Converted', 'Follow-Up Required',
+  'Customer Requested Information', 'Other',
+];
+
 /* ==================== REPORT / ANALYTICS DATA ==================== */
 export const LEAD_SOURCE_REPORT = [
   { source: 'Website', leads: 1240, converted: 186, rate: 15.0 },

@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import {
   Plus, ArrowRight, Globe, Search, Filter, X, MoreVertical,
   Trash2, Pencil, AlertCircle, Phone, Mail, TrendingUp, Building2,
-  ShieldBan, ShieldCheck, Copy, Eye, Calendar, Users, MapPin,
-  Activity, CheckCircle2, Clock, UserCog, Briefcase, Link2, Layers,
-  LayoutDashboard, Target, RefreshCw, Sparkles, Zap, TrendingDown,
+  ShieldBan, ShieldCheck, Copy, Eye, Calendar, Users,
+  Activity, Clock, UserCog, Briefcase, Link2, Layers,
+  LayoutDashboard, TrendingDown,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -31,6 +31,12 @@ const BUSINESS_TYPES = [
   'Other',
 ];
 
+/* ============================================================
+   Resolve the project-scoping key from any record.
+   Different mock collections may use `projectId` or `websiteId`.
+   ============================================================ */
+const recordProjectId = (rec) => rec?.projectId ?? rec?.websiteId ?? null;
+
 export default function Projects() {
   const { setActiveWebsiteId } = useAuth();
   const navigate = useNavigate();
@@ -47,6 +53,13 @@ export default function Projects() {
   const [editingProject, setEditingProject] = useState(null);
   const [viewingProject, setViewingProject] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  /* ========== TOAST HELPER ========== */
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2200);
+  };
 
   /* ========== FILTER ========== */
   const filteredProjects = useMemo(() => {
@@ -55,7 +68,7 @@ export default function Projects() {
       if (statusFilter !== 'All' && p.status !== statusFilter) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const haystack = `${p.name} ${p.code} ${p.ivrNumber} ${p.plan} ${p.domain || ''} ${p.businessType || ''}`.toLowerCase();
+        const haystack = `${p.name || ''} ${p.code || ''} ${p.ivrNumber || ''} ${p.plan || ''} ${p.domain || ''} ${p.businessType || ''}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
@@ -72,7 +85,9 @@ export default function Projects() {
       (sum, p) => sum + statsForProject(p.id).totalLeads,
       0
     );
-    const totalAgents = AGENTS.length;
+    /* Count only agents that belong to existing projects */
+    const projectIds = new Set(allProjects.map((p) => p.id));
+    const totalAgents = AGENTS.filter((a) => projectIds.has(recordProjectId(a))).length;
     return { total, active, trial, blocked, totalLeads, totalAgents };
   }, [allProjects]);
 
@@ -80,14 +95,29 @@ export default function Projects() {
   const adminName = (adminId) =>
     ADMINS.find((a) => a.id === adminId)?.name || 'Unassigned';
 
+  const isIvrTaken = (ivr, excludeId = null) =>
+    allProjects.some((p) => p.ivrNumber === ivr && p.id !== excludeId);
+
+  const isCodeTaken = (code, excludeId = null) =>
+    allProjects.some((p) => p.code === code && p.id !== excludeId);
+
+  const isNameTaken = (name, excludeId = null) =>
+    allProjects.some(
+      (p) => p.name.toLowerCase() === name.toLowerCase() && p.id !== excludeId
+    );
+
   /* ========== ACTIONS ========== */
   const handleAdd = (data) => {
-    const newProject = {
-      id: data.name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now(),
-      ...data,
-    };
+    const baseId = data.name.toLowerCase().replace(/\s+/g, '-');
+    const id =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? `${baseId}-${crypto.randomUUID().slice(0, 8)}`
+        : `${baseId}-${Date.now()}`;
+
+    const newProject = { id, ...data };
     setAllProjects((prev) => [...prev, newProject]);
     setShowAddModal(false);
+    showToast(`Project "${data.name}" created`);
   };
 
   const handleEdit = (id, updates) => {
@@ -95,12 +125,14 @@ export default function Projects() {
       prev.map((p) => (p.id === id ? { ...p, ...updates } : p))
     );
     setEditingProject(null);
+    showToast('Project updated');
   };
 
   const handleDelete = (id) => {
     setAllProjects((prev) => prev.filter((p) => p.id !== id));
     setConfirmDelete(null);
     setMenuOpenId(null);
+    showToast('Project removed');
   };
 
   const handleToggleBlock = (id, currentStatus) => {
@@ -109,25 +141,43 @@ export default function Projects() {
       prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p))
     );
     setMenuOpenId(null);
+    showToast(newStatus === 'Blocked' ? 'Project blocked' : 'Project unblocked');
   };
 
-  const handleCopyIvr = (ivr) => {
-    navigator.clipboard?.writeText(ivr);
-    setMenuOpenId(null);
-  };
-
-  const handleCopyCode = (code) => {
-    navigator.clipboard?.writeText(code);
+  const handleCopy = async (text, label) => {
+    if (!text) {
+      showToast(`No ${label} to copy`, 'error');
+      setMenuOpenId(null);
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        /* Fallback for insecure contexts */
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      showToast(`${label} copied`);
+    } catch {
+      showToast('Copy failed', 'error');
+    }
     setMenuOpenId(null);
   };
 
   const handleOpenDashboard = (p) => {
     if (p.status === 'Blocked') {
-      alert('This project is blocked. Unblock it before opening the dashboard.');
+      showToast('This project is blocked. Unblock it first.', 'error');
       return;
     }
     setActiveWebsiteId(p.id);
-    navigate('/superadmin/dashboard');
+    navigate(`/superadmin/projects/${p.id}`);
   };
 
   const hasFilters =
@@ -169,8 +219,6 @@ export default function Projects() {
           sub={`${summary.active} currently active`}
           icon={Building2}
           color="purple"
-          trend="+12%"
-          trendUp
         />
         <AnimatedStatCard
           label="Active"
@@ -178,8 +226,6 @@ export default function Projects() {
           sub={`of ${summary.total} projects`}
           icon={Activity}
           color="emerald"
-          trend="+8%"
-          trendUp
         />
         <AnimatedStatCard
           label="Trial"
@@ -187,8 +233,6 @@ export default function Projects() {
           sub="Pending conversion"
           icon={Clock}
           color="amber"
-          trend="+2 new"
-          trendUp
         />
         <AnimatedStatCard
           label="Blocked"
@@ -196,8 +240,6 @@ export default function Projects() {
           sub="Require attention"
           icon={ShieldBan}
           color="rose"
-          trend="-1"
-          trendUp={false}
         />
         <AnimatedStatCard
           label="Total Leads"
@@ -205,8 +247,6 @@ export default function Projects() {
           sub={`${summary.totalAgents} agents`}
           icon={Layers}
           color="purple"
-          trend="+18%"
-          trendUp
         />
       </div>
 
@@ -284,9 +324,9 @@ export default function Projects() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredProjects.map((p) => {
             const stats = statsForProject(p.id);
-            const agentCount = AGENTS.filter((a) => a.websiteId === p.id).length;
-            const projectCalls = CALLS.filter((c) => c.projectId === p.id).length;
-            const projectFollowUps = FOLLOW_UPS.filter((f) => f.projectId === p.id).length;
+            const agentCount = AGENTS.filter((a) => recordProjectId(a) === p.id).length;
+            const projectCalls = CALLS.filter((c) => recordProjectId(c) === p.id).length;
+            const projectFollowUps = FOLLOW_UPS.filter((f) => recordProjectId(f) === p.id).length;
             const isBlocked = p.status === 'Blocked';
 
             return (
@@ -385,12 +425,12 @@ export default function Projects() {
                           <MenuItem
                             icon={Copy}
                             label="Copy IVR"
-                            onClick={() => handleCopyIvr(p.ivrNumber)}
+                            onClick={() => handleCopy(p.ivrNumber, 'IVR')}
                           />
                           <MenuItem
                             icon={Copy}
                             label="Copy Code"
-                            onClick={() => handleCopyCode(p.code || '')}
+                            onClick={() => handleCopy(p.code, 'Code')}
                           />
                           <MenuItem
                             icon={isBlocked ? ShieldCheck : ShieldBan}
@@ -451,7 +491,7 @@ export default function Projects() {
                   {/* Row 4: Expiry */}
                   <div className="mt-3 flex items-center gap-1.5 text-xs text-brand-ink/50">
                     <Calendar size={11} />
-                    Expires {p.expiresOn}
+                    Expires {p.expiresOn || '—'}
                   </div>
 
                   {/* Row 5: Action buttons */}
@@ -514,6 +554,7 @@ export default function Projects() {
       {showAddModal && (
         <ProjectModal
           mode="add"
+          existingProjects={allProjects}
           onClose={() => setShowAddModal(false)}
           onSubmit={handleAdd}
         />
@@ -522,7 +563,9 @@ export default function Projects() {
       {editingProject && (
         <ProjectModal
           mode="edit"
+          key={editingProject.id}
           initial={editingProject}
+          existingProjects={allProjects}
           onClose={() => setEditingProject(null)}
           onSubmit={(data) => handleEdit(editingProject.id, data)}
         />
@@ -546,19 +589,30 @@ export default function Projects() {
 
       {confirmDelete && (
         <ConfirmDialog
-          title="Delete project?"
-          message={`This will permanently delete "${confirmDelete.name}" and all its data. This action cannot be undone.`}
-          confirmLabel="Delete Project"
+          title="Remove project?"
+          message={`This will remove "${confirmDelete.name}" from the projects list. Its leads, agents, and calls remain in the system.`}
+          confirmLabel="Remove Project"
           onCancel={() => setConfirmDelete(null)}
           onConfirm={() => handleDelete(confirmDelete.id)}
         />
+      )}
+
+      {/* ================= TOAST ================= */}
+      {toast && (
+        <div
+          className={`fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-lg ${
+            toast.type === 'error' ? 'bg-rose-500' : 'bg-brand-purple'
+          }`}
+        >
+          {toast.message}
+        </div>
       )}
     </div>
   );
 }
 
-/* ================= ANIMATED STAT CARD (with proper borders) ================= */
-function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp }) {
+/* ================= ANIMATED STAT CARD ================= */
+function AnimatedStatCard({ label, value, sub, icon: Icon, color }) {
   const themes = {
     purple: {
       border: 'border-violet-200 hover:border-violet-400',
@@ -604,17 +658,12 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp
     <div
       className={`group relative overflow-hidden rounded-2xl border-2 bg-white p-4 shadow-sm transition-all duration-500 hover:-translate-y-1 ${t.border} ${t.shadow}`}
     >
-      {/* Gradient background on hover */}
       <span
         className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${t.bg} opacity-0 transition-opacity duration-500 group-hover:opacity-100`}
       />
-
-      {/* Animated top bar */}
       <span
         className={`absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${t.bar} transition-transform duration-500 group-hover:scale-x-100`}
       />
-
-      {/* Soft glow */}
       <span
         className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full ${t.glow} opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100`}
       />
@@ -626,19 +675,6 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp
           >
             <Icon size={18} />
           </span>
-
-          {trend && (
-            <span
-              className={`flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-                trendUp
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
-                  : 'border-rose-200 bg-rose-50 text-rose-500'
-              }`}
-            >
-              {trendUp ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-              {trend}
-            </span>
-          )}
         </div>
 
         <p
@@ -763,10 +799,10 @@ function EmptyState({ hasFilters, onClear, onAdd }) {
 /* ================= PROJECT DETAILS DRAWER ================= */
 function ProjectDetailsDrawer({ project, onClose, onEdit, onToggleBlock, onOpen }) {
   const stats = statsForProject(project.id);
-  const projectAgents = AGENTS.filter((a) => a.websiteId === project.id);
-  const projectLeads = LEADS.filter((l) => l.websiteId === project.id);
-  const projectCalls = CALLS.filter((c) => c.projectId === project.id);
-  const projectFollowUps = FOLLOW_UPS.filter((f) => f.projectId === project.id);
+  const projectAgents = AGENTS.filter((a) => recordProjectId(a) === project.id);
+  const projectLeads = LEADS.filter((l) => recordProjectId(l) === project.id);
+  const projectCalls = CALLS.filter((c) => recordProjectId(c) === project.id);
+  const projectFollowUps = FOLLOW_UPS.filter((f) => recordProjectId(f) === project.id);
   const assignedAdmin = ADMINS.find((a) => a.id === project.assignedAdminId);
   const isBlocked = project.status === 'Blocked';
 
@@ -819,7 +855,7 @@ function ProjectDetailsDrawer({ project, onClose, onEdit, onToggleBlock, onOpen 
               }
             />
             <InfoBox label="Plan" value={project.plan} color="purple" />
-            <InfoBox label="Expires" value={project.expiresOn} color="purple" />
+            <InfoBox label="Expires" value={project.expiresOn || '—'} color="purple" />
           </div>
 
           {/* Business Info */}
@@ -829,8 +865,6 @@ function ProjectDetailsDrawer({ project, onClose, onEdit, onToggleBlock, onOpen 
             </h4>
             <InfoRow icon={Briefcase} label="Business Type" value={project.businessType || '—'} />
             <InfoRow icon={Link2} label="Domain" value={project.domain || '—'} />
-            <InfoRow icon={Clock} label="Business Hours" value={project.businessHours || '—'} />
-            <InfoRow icon={Globe} label="Timezone" value={project.timezone || '—'} />
           </div>
 
           {/* Contact & IVR */}
@@ -838,11 +872,11 @@ function ProjectDetailsDrawer({ project, onClose, onEdit, onToggleBlock, onOpen 
             <h4 className="font-display text-sm font-semibold text-brand-ink">
               Contact & IVR
             </h4>
-            <InfoRow icon={Phone} label="IVR Number" value={project.ivrNumber} />
+            <InfoRow icon={Phone} label="IVR Number" value={project.ivrNumber || '—'} />
             <InfoRow
               icon={Mail}
               label="Contact Email"
-              value={project.contactEmail || `support@${project.id}.com`}
+              value={project.contactEmail || '—'}
             />
             <InfoRow
               icon={Phone}
@@ -857,7 +891,10 @@ function ProjectDetailsDrawer({ project, onClose, onEdit, onToggleBlock, onOpen 
               <h4 className="font-display text-sm font-semibold text-brand-ink">
                 Assigned Admin
               </h4>
-              <button className="text-xs font-semibold text-brand-purple hover:underline">
+              <button
+                onClick={onEdit}
+                className="text-xs font-semibold text-brand-purple hover:underline"
+              >
                 Change
               </button>
             </div>
@@ -1057,7 +1094,9 @@ function InfoBox({ label, value, color = 'purple' }) {
       <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70">
         {label}
       </p>
-      <p className="mt-1 truncate text-sm font-bold">{value}</p>
+      <p className="mt-1 truncate text-sm font-bold" title={value}>
+        {value}
+      </p>
     </div>
   );
 }
@@ -1100,7 +1139,13 @@ function UsageStat({ icon: Icon, label, value, used, max }) {
 }
 
 /* ================= PROJECT MODAL ================= */
-function ProjectModal({ mode = 'add', initial = {}, onClose, onSubmit }) {
+function ProjectModal({
+  mode = 'add',
+  initial = {},
+  existingProjects = [],
+  onClose,
+  onSubmit,
+}) {
   const [form, setForm] = useState({
     name: initial.name || '',
     code: initial.code || '',
@@ -1117,13 +1162,38 @@ function ProjectModal({ mode = 'add', initial = {}, onClose, onSubmit }) {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  /* If the admin id doesn't match any known admin, expose it as a fallback option
+     so we don't silently drop it on submit. */
+  const knownAdminIds = new Set(ADMINS.map((a) => a.id));
+  const orphanAdminId =
+    form.assignedAdminId && !knownAdminIds.has(form.assignedAdminId)
+      ? form.assignedAdminId
+      : null;
+
   const validate = () => {
-    if (!form.name.trim()) return 'Project name is required.';
-    if (!form.code.trim()) return 'Project code is required.';
-    if (!form.ivrNumber.trim()) return 'IVR number is required.';
-    if (!/^[0-9]{10}$/.test(form.ivrNumber.trim()))
-      return 'IVR must be exactly 10 digits.';
+    const name = form.name.trim();
+    const code = form.code.trim();
+    const ivr = form.ivrNumber.trim();
+
+    if (!name) return 'Project name is required.';
+    if (!code) return 'Project code is required.';
+    if (!ivr) return 'IVR number is required.';
+    if (!/^[0-9]{10}$/.test(ivr)) return 'IVR must be exactly 10 digits.';
     if (!form.expiresOn.trim()) return 'Expiry date is required.';
+
+    /* Uniqueness checks (excluding self when editing) */
+    const excludeId = initial.id || null;
+    if (existingProjects.some((p) => p.id !== excludeId && p.ivrNumber === ivr))
+      return 'This IVR number is already used by another project.';
+    if (existingProjects.some((p) => p.id !== excludeId && p.code === code))
+      return 'This project code is already in use.';
+    if (
+      existingProjects.some(
+        (p) => p.id !== excludeId && p.name.toLowerCase() === name.toLowerCase()
+      )
+    )
+      return 'A project with this name already exists.';
+
     return null;
   };
 
@@ -1285,6 +1355,11 @@ function ProjectModal({ mode = 'add', initial = {}, onClose, onSubmit }) {
               className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/15"
             >
               <option value="">Unassigned</option>
+              {orphanAdminId && (
+                <option value={orphanAdminId}>
+                  (Unknown admin — {orphanAdminId})
+                </option>
+              )}
               {ADMINS.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name} ({a.email})
@@ -1400,7 +1475,7 @@ function ModalInput({
           placeholder={placeholder}
           className={`w-full rounded-xl border border-brand-lilac bg-white py-2.5 ${
             Icon ? 'pl-10' : 'pl-3.5'
-          } pr-3.5 text-sm outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/15`}
+          } pr-3.5 text-sm outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/15 [&::-webkit-calendar-picker-indicator]:opacity-60`}
         />
       </div>
     </div>
@@ -1408,7 +1483,13 @@ function ModalInput({
 }
 
 /* ================= CONFIRM DIALOG ================= */
-function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm }) {
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel = 'Confirm',
+  onCancel,
+  onConfirm,
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-panel">

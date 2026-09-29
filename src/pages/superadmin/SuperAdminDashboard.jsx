@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Users, Phone, PhoneMissed, UserCheck, Globe2, TrendingUp, TrendingDown,
+  Users, Phone, PhoneMissed, UserCheck, TrendingUp, TrendingDown,
   Building2, Activity, Zap, Award, Clock, ArrowRight, Eye, BarChart3,
   PieChart as PieIcon, Sparkles, UserCog, Target, Megaphone, Calendar,
   MessageSquare, Coins, Plug, FileText, Shield, AlertTriangle,
@@ -22,6 +22,13 @@ import {
 } from '../../data/mockData';
 
 const COLORS = ['#E31C79', '#8B2FD6', '#F0388A', '#6D28D9', '#26A69A', '#FF9800'];
+
+/* ============================================================
+   Helper: resolve the scoping key for a record.
+   Different mock collections may use `projectId` or `websiteId`.
+   We check both so filtering is resilient.
+   ============================================================ */
+const recordProjectId = (rec) => rec?.projectId ?? rec?.websiteId ?? null;
 
 export default function SuperAdminDashboard() {
   const { user, activeWebsiteId, activeWebsite, setActiveWebsiteId } = useAuth();
@@ -62,7 +69,7 @@ export default function SuperAdminDashboard() {
     () =>
       isAllProjects
         ? LEADS
-        : LEADS.filter((l) => l.websiteId === projectFilter),
+        : LEADS.filter((l) => recordProjectId(l) === projectFilter),
     [isAllProjects, projectFilter]
   );
 
@@ -70,7 +77,7 @@ export default function SuperAdminDashboard() {
     () =>
       isAllProjects
         ? CALLS
-        : CALLS.filter((c) => c.projectId === projectFilter),
+        : CALLS.filter((c) => recordProjectId(c) === projectFilter),
     [isAllProjects, projectFilter]
   );
 
@@ -78,7 +85,7 @@ export default function SuperAdminDashboard() {
     () =>
       isAllProjects
         ? AGENTS
-        : AGENTS.filter((a) => a.websiteId === projectFilter),
+        : AGENTS.filter((a) => recordProjectId(a) === projectFilter),
     [isAllProjects, projectFilter]
   );
 
@@ -86,7 +93,7 @@ export default function SuperAdminDashboard() {
     () =>
       isAllProjects
         ? ADMINS
-        : ADMINS.filter((a) => a.projectId === projectFilter),
+        : ADMINS.filter((a) => recordProjectId(a) === projectFilter),
     [isAllProjects, projectFilter]
   );
 
@@ -94,7 +101,7 @@ export default function SuperAdminDashboard() {
     () =>
       isAllProjects
         ? FOLLOW_UPS
-        : FOLLOW_UPS.filter((f) => f.projectId === projectFilter),
+        : FOLLOW_UPS.filter((f) => recordProjectId(f) === projectFilter),
     [isAllProjects, projectFilter]
   );
 
@@ -102,7 +109,7 @@ export default function SuperAdminDashboard() {
     () =>
       isAllProjects
         ? CAMPAIGNS
-        : CAMPAIGNS.filter((c) => c.projectId === projectFilter),
+        : CAMPAIGNS.filter((c) => recordProjectId(c) === projectFilter),
     [isAllProjects, projectFilter]
   );
 
@@ -110,7 +117,7 @@ export default function SuperAdminDashboard() {
     () =>
       isAllProjects
         ? COMMUNICATIONS
-        : COMMUNICATIONS.filter((c) => c.projectId === projectFilter),
+        : COMMUNICATIONS.filter((c) => recordProjectId(c) === projectFilter),
     [isAllProjects, projectFilter]
   );
 
@@ -118,7 +125,15 @@ export default function SuperAdminDashboard() {
     () =>
       isAllProjects
         ? CREDITS
-        : CREDITS.filter((c) => c.projectId === projectFilter),
+        : CREDITS.filter((c) => recordProjectId(c) === projectFilter),
+    [isAllProjects, projectFilter]
+  );
+
+  const scopedCustomers = useMemo(
+    () =>
+      isAllProjects
+        ? CUSTOMERS
+        : CUSTOMERS.filter((c) => recordProjectId(c) === projectFilter),
     [isAllProjects, projectFilter]
   );
 
@@ -131,9 +146,7 @@ export default function SuperAdminDashboard() {
     const totalAgents = scopedAgents.length;
     const activeAgents = scopedAgents.filter((a) => a.status === 'Active').length;
     const totalLeads = scopedLeads.length;
-    const totalCustomers = isAllProjects
-      ? CUSTOMERS.length
-      : CUSTOMERS.filter((c) => c.projectId === projectFilter).length;
+    const totalCustomers = scopedCustomers.length;
     const totalCalls = scopedCalls.length;
     const todaysCalls = scopedCalls.filter((c) => c.date === '2026-09-22').length;
     const pendingFollowUps = scopedFollowUps.filter(
@@ -142,7 +155,12 @@ export default function SuperAdminDashboard() {
     const activeCampaigns = scopedCampaigns.filter((c) => c.status === 'Active').length;
     const conversions = scopedLeads.filter((l) => l.status === 'Won').length;
     const newLeadsToday = scopedLeads.filter((l) => l.status === 'Fresh').length;
-    const systemAlerts = 3;
+
+    /* Derive alerts from real data instead of hardcoding */
+    const overdueFollowUps = scopedFollowUps.filter((f) => f.status === 'Overdue').length;
+    const blockedProjects = scopedProjects.filter((p) => p.status === 'Blocked').length;
+    const failedCalls = scopedCalls.filter((c) => c.status === 'failed').length;
+    const systemAlerts = overdueFollowUps + blockedProjects + (failedCalls > 0 ? 1 : 0);
 
     return {
       totalProjects, activeProjects, totalAdmins, activeAdmins,
@@ -150,17 +168,20 @@ export default function SuperAdminDashboard() {
       conversions, totalCalls, todaysCalls, pendingFollowUps,
       activeCampaigns, systemAlerts,
     };
-  }, [scopedProjects, scopedAdmins, scopedAgents, scopedLeads, scopedCalls, scopedFollowUps, scopedCampaigns, isAllProjects, projectFilter]);
+  }, [
+    scopedProjects, scopedAdmins, scopedAgents, scopedLeads,
+    scopedCalls, scopedFollowUps, scopedCampaigns, scopedCustomers,
+  ]);
 
   /* ==================== PROJECT PERFORMANCE ==================== */
   const projectPerformance = useMemo(() => {
     const list = isAllProjects ? PROJECTS : PROJECTS.filter((p) => p.id === projectFilter);
     return list.map((p) => {
       const stats = statsForProject(p.id);
-      const projectAgents = AGENTS.filter((a) => a.websiteId === p.id).length;
-      const projectCalls = CALLS.filter((c) => c.projectId === p.id).length;
-      const projectFollowUps = FOLLOW_UPS.filter((f) => f.projectId === p.id).length;
-      const projectLeads = LEADS.filter((l) => l.websiteId === p.id);
+      const projectAgents = AGENTS.filter((a) => recordProjectId(a) === p.id).length;
+      const projectCalls = CALLS.filter((c) => recordProjectId(c) === p.id).length;
+      const projectFollowUps = FOLLOW_UPS.filter((f) => recordProjectId(f) === p.id).length;
+      const projectLeads = LEADS.filter((l) => recordProjectId(l) === p.id);
       const converted = projectLeads.filter((l) => l.status === 'Won').length;
 
       return {
@@ -221,8 +242,9 @@ export default function SuperAdminDashboard() {
     const connected = scopedCalls.filter((c) => c.status === 'connected').length;
     const failed = scopedCalls.filter((c) => c.status === 'failed').length;
     const totalDuration = scopedCalls.reduce((sum, c) => {
+      if (!c.duration || typeof c.duration !== 'string') return sum;
       const [m, s] = c.duration.split(':').map(Number);
-      return sum + m * 60 + s;
+      return sum + (m || 0) * 60 + (s || 0);
     }, 0);
     const avgDuration = scopedCalls.length > 0 ? Math.round(totalDuration / scopedCalls.length) : 0;
     return { inbound, outbound, missed, connected, failed, totalDuration, avgDuration };
@@ -245,24 +267,26 @@ export default function SuperAdminDashboard() {
     return {
       active: active.length,
       completed: completed.length,
-      totalLeads: scopedCampaigns.reduce((s, c) => s + c.leads, 0),
-      totalCalls: scopedCampaigns.reduce((s, c) => s + c.calls, 0),
-      connected: scopedCampaigns.reduce((s, c) => s + c.connected, 0),
-      interested: scopedCampaigns.reduce((s, c) => s + c.interested, 0),
-      converted: scopedCampaigns.reduce((s, c) => s + c.converted, 0),
+      totalLeads: scopedCampaigns.reduce((s, c) => s + (c.leads || 0), 0),
+      totalCalls: scopedCampaigns.reduce((s, c) => s + (c.calls || 0), 0),
+      connected: scopedCampaigns.reduce((s, c) => s + (c.connected || 0), 0),
+      interested: scopedCampaigns.reduce((s, c) => s + (c.interested || 0), 0),
+      converted: scopedCampaigns.reduce((s, c) => s + (c.converted || 0), 0),
     };
   }, [scopedCampaigns]);
 
   /* ==================== AGENT ALLOCATION ==================== */
   const agentPieData = useMemo(
     () =>
-      scopedAgents.map((a) => ({
-        name: a.name,
-        value: a.leadsAssigned || 0,
-      })),
+      scopedAgents
+        .map((a) => ({
+          name: a.name,
+          value: a.leadsAssigned || 0,
+        }))
+        .filter((d) => d.value > 0),
     [scopedAgents]
   );
-  const totalPie = agentPieData.reduce((s, d) => s + d.value, 0) || 1;
+  const totalPie = agentPieData.reduce((s, d) => s + d.value, 0);
 
   /* ==================== SOURCE BREAKDOWN ==================== */
   const sourceBreakdown = useMemo(() => {
@@ -277,7 +301,7 @@ export default function SuperAdminDashboard() {
   const recentActivity = useMemo(() => {
     let logs = SYSTEM_LOGS;
     if (!isAllProjects) {
-      logs = logs.filter((l) => l.projectId === projectFilter);
+      logs = logs.filter((l) => recordProjectId(l) === projectFilter);
     }
     return logs.slice(0, 5).map((log) => ({
       id: log.id,
@@ -308,6 +332,7 @@ export default function SuperAdminDashboard() {
       ['Total Calls', globalStats.totalCalls],
       ['Conversions', globalStats.conversions],
       ['Active Campaigns', globalStats.activeCampaigns],
+      ['System Alerts', globalStats.systemAlerts],
     ];
     const csv = rows.map((r) => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -322,7 +347,10 @@ export default function SuperAdminDashboard() {
   const handleFilterSelect = (id) => {
     setProjectFilter(id);
     setFilterOpen(false);
-    if (id !== 'all') {
+    if (id === 'all') {
+      /* Reset active website so other pages don't hold a stale project */
+      setActiveWebsiteId(null);
+    } else {
       setActiveWebsiteId(id);
     }
   };
@@ -333,7 +361,7 @@ export default function SuperAdminDashboard() {
       return;
     }
     setActiveWebsiteId(id);
-    navigate('/superadmin/dashboard');
+    navigate(`/superadmin/projects/${id}`);
   };
 
   return (
@@ -526,9 +554,6 @@ export default function SuperAdminDashboard() {
               {isAllProjects ? 'Platform KPIs' : `${activeProjectOption.name} — KPIs`}
             </h2>
           </div>
-          <p className="text-[11px] text-brand-ink/40">
-            Click any card to navigate
-          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
@@ -615,9 +640,9 @@ export default function SuperAdminDashboard() {
           <KPICard
             icon={Coins}
             label="Credits Used"
-            value={scopedCredits.reduce((s, c) => s + c.used, 0)}
+            value={scopedCredits.reduce((s, c) => s + (c.used || 0), 0)}
             color="amber"
-            sub={`${scopedCredits.reduce((s, c) => s + c.balance, 0).toLocaleString()} left`}
+            sub={`${scopedCredits.reduce((s, c) => s + (c.balance || 0), 0).toLocaleString()} left`}
             to="/superadmin/credits"
           />
           <KPICard
@@ -627,7 +652,7 @@ export default function SuperAdminDashboard() {
             color="rose"
             sub="Needs attention"
             to="/superadmin/logs"
-            pulse
+            pulse={globalStats.systemAlerts > 0}
           />
         </div>
       </div>
@@ -656,7 +681,7 @@ export default function SuperAdminDashboard() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* Left: Bars */}
           <div className="space-y-3">
-            {topProjects.map((p, idx) => (
+            {topProjects.map((p) => (
               <div key={p.id} className="rounded-xl border-2 border-brand-lilac/70 bg-white p-3 transition-all hover:border-brand-purple/40 hover:shadow-md">
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -761,7 +786,6 @@ export default function SuperAdminDashboard() {
               <h2 className="font-display text-base font-semibold text-brand-ink">
                 {chartView === 'leads' && 'Leads — Last 7 Days'}
                 {chartView === 'calls' && 'Calls — Last 7 Days'}
-                {chartView === 'conversion' && 'Conversion Trend'}
                 {chartView === 'activity' && 'Activity Trend'}
               </h2>
               <p className="text-xs text-brand-ink/40">
@@ -806,14 +830,6 @@ export default function SuperAdminDashboard() {
                   <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #F1E4FB', fontSize: 12 }} />
                   <Area type="monotone" dataKey="calls" stroke="#8B2FD6" strokeWidth={3} fill="url(#areaGrad)" name="Activity" />
                 </AreaChart>
-              ) : chartView === 'conversion' ? (
-                <LineChart data={DAILY_CALL_TREND}>
-                  <CartesianGrid vertical={false} stroke="#F1E4FB" />
-                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#8b7a9e' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: '#8b7a9e' }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #F1E4FB', fontSize: 12 }} />
-                  <Line type="monotone" dataKey="calls" stroke="#8B2FD6" strokeWidth={3} dot={{ fill: '#E31C79', r: 4 }} name="Conversion %" />
-                </LineChart>
               ) : (
                 <BarChart data={DAILY_CALL_TREND}>
                   <CartesianGrid vertical={false} stroke="#F1E4FB" />
@@ -844,7 +860,7 @@ export default function SuperAdminDashboard() {
 
           {agentPieData.length === 0 ? (
             <div className="flex h-64 items-center justify-center text-xs text-brand-ink/50">
-              No agents in this project
+              No allocated leads to agents in this project
             </div>
           ) : (
             <>

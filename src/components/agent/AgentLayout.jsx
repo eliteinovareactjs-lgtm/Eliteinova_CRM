@@ -5,20 +5,21 @@ import AgentSidebar from './AgentSidebar';
 import AgentTopbar from './AgentTopbar';
 
 export default function AgentLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
-  const [collapsed, setCollapsed] = useState(false); // desktop collapse
+  const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="flex min-h-screen bg-brand-mist">
       <AgentSidebar
-        open={sidebarOpen}
+        open={open}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((c) => !c)}
-        onClose={() => setSidebarOpen(false)}
+        onClose={() => setOpen(false)}
       />
-      <div className="flex min-h-screen flex-1 flex-col">
-        <AgentTopbar onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 p-4 md:p-8">
+
+      <div className="flex min-h-screen flex-1 flex-col min-w-0">
+        <AgentTopbar onMenuClick={() => setOpen(true)} />
+        <main className="flex-1 overflow-x-hidden p-4 md:p-6">
           <Outlet />
         </main>
       </div>
