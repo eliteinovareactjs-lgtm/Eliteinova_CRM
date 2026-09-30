@@ -4,11 +4,11 @@ import {
   Phone, MessageCircle, Users, PhoneMissed, ClipboardList, X, Calendar,
   Search, Upload, Play, ChevronDown, Mic, PhoneIncoming, PhoneOutgoing,
   Clock, Headphones, UserCheck, AlertCircle, CheckCircle2, Tag, ListFilter,
-  Eye, MoreVertical, Trash2, Percent, TrendingUp, TrendingDown, Grid3x3,
+  Eye, Trash2, Percent, TrendingUp, TrendingDown, Grid3x3,
   List, PhoneOff, MicOff, Volume2, VolumeX, PauseCircle, PlayCircle,
   StickyNote, Plus, History, Edit3, UserPlus, Inbox, Sparkles, Filter,
   MapPin, Flame, Megaphone, CalendarClock, Award, PhoneCall,
-  User as UserIcon, Briefcase, FileUp,
+  User as UserIcon, Briefcase, FileUp, Mail,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { LEADS as INITIAL_LEADS } from '../../data/mockData';
@@ -176,7 +176,6 @@ export default function MyLeads() {
 
   /* ---------- UI ---------- */
   const [viewMode, setViewMode] = useState('list');
-  const [menuOpenId, setMenuOpenId] = useState(null);
 
   /* ---------- SELECTION ---------- */
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -317,7 +316,6 @@ export default function MyLeads() {
       return next;
     });
     setConfirmDelete(null);
-    setMenuOpenId(null);
     showToast('Lead deleted', 'error');
   };
 
@@ -412,7 +410,6 @@ export default function MyLeads() {
   };
 
   const handleSetFollowUp = (lead) => {
-    setMenuOpenId(null);
     setFollowUpLead(lead);
   };
 
@@ -435,7 +432,6 @@ export default function MyLeads() {
   };
 
   const handleCallNow = (lead) => {
-    setMenuOpenId(null);
     setCallingLead(lead);
   };
 
@@ -765,12 +761,6 @@ export default function MyLeads() {
                       onEdit={() => setEditLead(lead)}
                       onHistory={() => setHistoryLead(lead)}
                       onAddNote={() => setNotesLead(lead)}
-                      menuOpenId={menuOpenId}
-                      setMenuOpenId={setMenuOpenId}
-                      onDelete={() => {
-                        setConfirmDelete(lead);
-                        setMenuOpenId(null);
-                      }}
                     />
                   ))}
                 </div>
@@ -788,6 +778,7 @@ export default function MyLeads() {
             onAddNote={() => setNotesLead(selected)}
             onEdit={() => { setEditLead(selected); setSelected(null); }}
             onHistory={() => setHistoryLead(selected)}
+            onDelete={() => { setConfirmDelete(selected); setSelected(null); }}
             onClose={() => setSelected(null)}
           />
         )}
@@ -999,20 +990,21 @@ function DropdownFilter({ label, icon: Icon, value, options, onChange }) {
 }
 
 /* ================================================================
-   LEAD ITEM
+   LEAD ITEM — no kebab, View Details button
    ================================================================ */
 function LeadItem({
   lead, viewMode, isSelected, onToggleSelect, onView, onCall,
   onFollowUp, onEdit, onHistory, onAddNote,
-  menuOpenId, setMenuOpenId, onDelete,
 }) {
   const bucket = bucketOf(lead.status);
   const priority = lead.priority || 'Medium';
 
   if (viewMode === 'grid') {
     return (
-      <div className="group relative flex flex-col overflow-hidden rounded-2xl border-2 border-brand-lilac/80 bg-white shadow-sm transition-all hover:-translate-y-1 hover:border-brand-magenta/50 hover:shadow-[0_20px_45px_-15px_rgba(227,28,121,0.25)]">
-        <span className="absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r from-brand-magenta to-brand-purple transition-transform duration-500 group-hover:scale-x-100" />
+      <div className="group relative flex flex-col rounded-2xl border-2 border-brand-lilac/80 bg-white shadow-sm transition-all hover:-translate-y-1 hover:border-brand-magenta/50 hover:shadow-[0_20px_45px_-15px_rgba(227,28,121,0.25)]">
+        <span className="pointer-events-none absolute inset-x-0 top-0 h-1 overflow-hidden rounded-t-2xl">
+          <span className="block h-full w-full origin-left scale-x-0 bg-gradient-to-r from-brand-magenta to-brand-purple transition-transform duration-500 group-hover:scale-x-100" />
+        </span>
 
         <div className="relative flex flex-col p-4">
           <div className="flex items-start gap-3">
@@ -1054,10 +1046,7 @@ function LeadItem({
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <button onClick={onView} className="flex items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white py-2 text-xs font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta">
-              <Eye size={12} /> View
-            </button>
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <button onClick={onCall} className="flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 py-2 text-xs font-semibold text-white shadow-card hover:brightness-110">
               <Phone size={12} /> Call
             </button>
@@ -1065,6 +1054,13 @@ function LeadItem({
               <Calendar size={12} /> Follow
             </button>
           </div>
+
+          <button
+            onClick={onView}
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white py-2 text-xs font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta"
+          >
+            <Eye size={12} /> View Details
+          </button>
         </div>
       </div>
     );
@@ -1125,59 +1121,22 @@ function LeadItem({
         <button onClick={onFollowUp} className="hidden h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-600 transition-all hover:bg-amber-100 sm:flex" title="Set Follow-up">
           <Calendar size={13} />
         </button>
-        <button onClick={onView} className="hidden h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta sm:flex" title="View">
-          <Eye size={13} />
+        <button onClick={onEdit} className="hidden h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta sm:flex" title="Edit">
+          <Edit3 size={13} />
+        </button>
+        <button onClick={onHistory} className="hidden h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta sm:flex" title="History">
+          <History size={13} />
         </button>
 
-        <div className="relative">
-          <button
-            onClick={() => setMenuOpenId(menuOpenId === lead.id ? null : lead.id)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-brand-ink/40 transition-colors hover:bg-brand-lilac"
-          >
-            <MoreVertical size={14} />
-          </button>
-          {menuOpenId === lead.id && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-              <div className="absolute right-0 top-full z-20 mt-2 w-52 overflow-hidden rounded-xl border border-brand-lilac bg-white p-1 shadow-panel">
-                <MenuItem icon={Eye} label="View Details" onClick={onView} />
-                <MenuItem icon={Edit3} label="Edit Lead" onClick={onEdit} />
-                <MenuItem icon={Phone} label="Call Lead" onClick={onCall} />
-                <MenuItem icon={Calendar} label="Set Follow-up" onClick={onFollowUp} />
-                <MenuItem icon={StickyNote} label="Add Note" onClick={onAddNote} />
-                <MenuItem icon={History} label="View History" onClick={onHistory} />
-                <MenuItem
-                  icon={MessageCircle}
-                  label="WhatsApp"
-                  onClick={() => {
-                    window.open(`https://wa.me/91${lead.mobile}`, '_blank');
-                    setMenuOpenId(null);
-                  }}
-                />
-                <div className="my-1 h-px bg-brand-lilac/60" />
-                <MenuItem icon={Trash2} label="Delete" danger onClick={onDelete} />
-              </div>
-            </>
-          )}
-        </div>
+        <button
+          onClick={onView}
+          className="flex h-8 items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-3 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta"
+          title="View details"
+        >
+          <Eye size={12} /> View Details
+        </button>
       </div>
     </div>
-  );
-}
-
-/* ================================================================
-   MENU ITEM
-   ================================================================ */
-function MenuItem({ icon: Icon, label, onClick, danger }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${
-        danger ? 'text-rose-500 hover:bg-rose-50' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-      }`}
-    >
-      <Icon size={14} /> {label}
-    </button>
   );
 }
 
@@ -1215,7 +1174,7 @@ function EmptyState({ hasFilters, onClear, tab }) {
 /* ================================================================
    LEAD DRAWER
    ================================================================ */
-function LeadDrawer({ lead, onCall, onFollowUp, onAddNote, onEdit, onHistory, onClose }) {
+function LeadDrawer({ lead, onCall, onFollowUp, onAddNote, onEdit, onHistory, onDelete, onClose }) {
   const bucket = bucketOf(lead.status);
   const priority = lead.priority || 'Medium';
   const recordings = useMemo(
@@ -1294,7 +1253,7 @@ function LeadDrawer({ lead, onCall, onFollowUp, onAddNote, onEdit, onHistory, on
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             <button onClick={onEdit} className="flex items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white py-2 text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40">
               <Edit3 size={12} /> Edit
             </button>
@@ -1304,7 +1263,20 @@ function LeadDrawer({ lead, onCall, onFollowUp, onAddNote, onEdit, onHistory, on
             <button onClick={onHistory} className="flex items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white py-2 text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40">
               <History size={12} /> History
             </button>
+            <button
+              onClick={() => window.open(`https://wa.me/91${lead.mobile}`, '_blank')}
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 py-2 text-xs font-semibold text-emerald-600 hover:bg-emerald-100"
+            >
+              <MessageCircle size={12} /> WhatsApp
+            </button>
           </div>
+
+          <button
+            onClick={onDelete}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 py-2.5 text-xs font-semibold text-rose-500 hover:bg-rose-100"
+          >
+            <Trash2 size={12} /> Delete Lead
+          </button>
 
           {lead.notes && lead.notes.length > 0 && (
             <div className="card !p-4 space-y-2">
