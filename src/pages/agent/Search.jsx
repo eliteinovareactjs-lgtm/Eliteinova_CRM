@@ -10,7 +10,8 @@ import {
   Zap, ArrowRight, Star, CircleDot, UserCheck, UserX,
   Target, Hash, Copy, PhoneMissed, RotateCcw, ArrowRightLeft, BookmarkPlus,
   AlertTriangle, Link2, CalendarClock, Trash2,
-  CheckSquare, Square,
+  CheckSquare, Square, UserPlus, Plus, Send, User, Shield,
+  TrendingUp, Timer, ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { LEADS } from '../../data/mockData';
@@ -34,6 +35,12 @@ const SEARCH_MODES = [
   { value: 'customerId', label: 'Customer ID' },
   { value: 'campaign',   label: 'Campaign' },
   { value: 'location',   label: 'Location' },
+];
+
+const SEARCH_SCOPES = [
+  { value: 'my-leads',      label: 'My Leads',               icon: UserCheck },
+  { value: 'my-customers',  label: 'My Customers',           icon: Users },
+  { value: 'all-accessible',label: 'All Accessible Records', icon: Shield },
 ];
 
 const SORT_OPTIONS = [
@@ -91,12 +98,9 @@ const STATUS_STYLES = {
   Lost:        'bg-rose-100 text-rose-500',
 };
 
+/* Quick Search chips — duplicates with Needs Attention removed */
 const QUICK_SEARCHES = [
   { key: 'myLeads',        label: 'My Leads',           icon: UserCheck,     tone: 'purple' },
-  { key: 'todayFollowUps', label: "Today's Follow-Ups", icon: CalendarCheck, tone: 'emerald' },
-  { key: 'overdue',        label: 'Overdue',            icon: AlertTriangle, tone: 'rose' },
-  { key: 'highPriority',   label: 'High Priority',      icon: Flame,         tone: 'rose' },
-  { key: 'newLeads',       label: 'New Leads',          icon: Sparkles,      tone: 'purple' },
   { key: 'missedCalls',    label: 'Missed Calls',       icon: PhoneMissed,   tone: 'rose' },
   { key: 'recentlyCalled', label: 'Recently Contacted', icon: PhoneCall,     tone: 'purple' },
   { key: 'converted',      label: 'Converted',          icon: CheckCircle2,  tone: 'emerald' },
@@ -147,6 +151,54 @@ function Highlight({ text, query }) {
 }
 
 /* ================================================================
+   NEXT ACTION LOGIC
+   ================================================================ */
+function getNextAction(record) {
+  const today = todayYMD();
+  const fu = record.followUpDate;
+
+  if (record.status === 'Lost') {
+    return { label: 'Closed · Lost', tone: 'slate', icon: X };
+  }
+  if (record.status === 'Converted') {
+    return { label: 'View Customer', tone: 'emerald', icon: UserCheck };
+  }
+  if (fu === today) {
+    return { label: 'Follow-up Today', tone: 'rose', icon: AlertTriangle };
+  }
+  if (fu && fu < today) {
+    return { label: 'Overdue', tone: 'rose', icon: AlertTriangle };
+  }
+  if (fu === tomorrowYMD()) {
+    return { label: 'Follow-up Tomorrow', tone: 'amber', icon: CalendarClock };
+  }
+  if (record.contactStatus === 'Never Contacted') {
+    return { label: 'Contact Now', tone: 'purple', icon: PhoneCall };
+  }
+  if (record.contactStatus === 'No Response') {
+    return { label: 'Retry Call', tone: 'amber', icon: RotateCcw };
+  }
+  return { label: 'No Action', tone: 'emerald', icon: CheckCircle2 };
+}
+
+const NEXT_ACTION_TONES = {
+  rose:    'bg-rose-50 text-rose-600 ring-rose-200',
+  amber:   'bg-amber-50 text-amber-700 ring-amber-200',
+  emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-200',
+  purple:  'bg-violet-50 text-brand-purple ring-violet-200',
+  slate:   'bg-slate-50 text-slate-600 ring-slate-200',
+};
+
+/* ================================================================
+   CONTACT PREFERENCE LOGIC
+   ================================================================ */
+const getContactAvailability = (r) => ({
+  phone:    !!r.mobile && normalizePhone(r.mobile).length === 10,
+  whatsapp: !!r.mobile && normalizePhone(r.mobile).length === 10,
+  email:    !!r.email && r.email.includes('@'),
+});
+
+/* ================================================================
    DEMO DATA
    ================================================================ */
 const buildSearchableRecords = (agentName, websiteId) => {
@@ -193,8 +245,24 @@ const buildSearchableRecords = (agentName, websiteId) => {
         ? { type: 'call', label: 'Contacted', at: lastContact }
         : null,
       contactStatus: lastContactOffset === null ? 'Never Contacted' : 'Contacted',
+      lastOutcome: ['Interested', 'No Answer', 'Busy', 'Not Interested'][i % 4],
+      preferredContact: i % 3 === 0 ? '10 AM – 12 PM · Weekdays' : i % 3 === 1 ? '2 PM – 5 PM' : '—',
       agentName,
       projectId: websiteId,
+      contactSummary: {
+        calls: 3 + (i % 5),
+        connected: 2 + (i % 3),
+        noAnswer: (i % 3),
+        whatsapp: i % 2,
+        sms: i % 4 === 0 ? 1 : 0,
+        followUps: 1 + (i % 3),
+      },
+      timeline: [
+        followUpDate && { type: 'follow-up', label: 'Follow-up scheduled', at: followUpDate },
+        lastContact && { type: 'call', label: 'Outbound call', at: lastContact, detail: 'Interested' },
+        lastContact && { type: 'note', label: 'Note added', at: lastContact, detail: 'Customer requested callback' },
+        { type: 'call', label: 'Outbound call', at: new Date(Date.now() - 6 * 86400000).toISOString(), detail: 'No Answer' },
+      ].filter(Boolean),
     };
   });
 
@@ -229,6 +297,7 @@ export default function Search() {
   const [activeTab, setActiveTab]       = useState('all');
   const [query, setQuery]               = useState('');
   const [searchMode, setSearchMode]     = useState('all');
+  const [searchScope, setSearchScope]   = useState('my-leads');
   const [sortBy, setSortBy]             = useState('relevance');
   const [searchWithin, setSearchWithin] = useState('');
   const [quickSearch, setQuickSearch]   = useState(null);
@@ -237,10 +306,12 @@ export default function Search() {
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [selectedRecord, setSelectedRecord]   = useState(null);
   const [showSaveSearch, setShowSaveSearch]   = useState(false);
+  const [showCreateLead, setShowCreateLead]   = useState(null);
   const [savedSearches, setSavedSearches]     = useState(DEFAULT_SAVED);
   const [recentSearches, setRecentSearches]   = useState([]);
   const [toast, setToast]                     = useState(null);
   const [selectedIds, setSelectedIds]         = useState([]);
+  const [pinnedIds, setPinnedIds]             = useState([]);
 
   const [records, setRecords] = useState(() =>
     buildSearchableRecords(user?.name || 'Agent', activeWebsiteId)
@@ -271,16 +342,17 @@ export default function Search() {
 
     switch (key) {
       case 'myLeads':        break;
-      case 'todayFollowUps': setFilters((f) => ({ ...f, followUpQuick: 'today' })); break;
-      case 'overdue':        setFilters((f) => ({ ...f, followUpQuick: 'overdue' })); break;
-      case 'highPriority':   setFilters((f) => ({ ...f, priority: 'High' })); break;
-      case 'newLeads':       setFilters((f) => ({ ...f, status: 'New', contactStatus: 'Never Contacted' })); break;
       case 'missedCalls':    setFilters((f) => ({ ...f, contactStatus: 'No Response' })); break;
       case 'recentlyCalled':
         setFilters((f) => ({ ...f, contactStatus: 'Contacted' }));
         setSortBy('recent-contact');
         break;
       case 'converted':      setFilters((f) => ({ ...f, status: 'Converted' })); break;
+      /* The following keys are triggered from the Needs Attention strip */
+      case 'overdue':        setFilters((f) => ({ ...f, followUpQuick: 'overdue' })); break;
+      case 'highPriority':   setFilters((f) => ({ ...f, priority: 'High' })); break;
+      case 'todayFollowUps': setFilters((f) => ({ ...f, followUpQuick: 'today' })); break;
+      case 'newLeads':       setFilters((f) => ({ ...f, status: 'New', contactStatus: 'Never Contacted' })); break;
       default: break;
     }
   };
@@ -297,6 +369,10 @@ export default function Search() {
     const results = [];
 
     for (const r of records) {
+      /* Search scope filtering */
+      if (searchScope === 'my-leads'      && r.recordType !== 'lead')     continue;
+      if (searchScope === 'my-customers'  && r.recordType !== 'customer') continue;
+
       if (activeTab === 'leads'     && r.recordType !== 'lead')     continue;
       if (activeTab === 'customers' && r.recordType !== 'customer') continue;
 
@@ -374,6 +450,11 @@ export default function Search() {
 
     const priorityRank = { High: 0, Medium: 1, Low: 2 };
     results.sort((a, b) => {
+      /* Pinned always float up */
+      const ap = pinnedIds.includes(a.id) ? 1 : 0;
+      const bp = pinnedIds.includes(b.id) ? 1 : 0;
+      if (ap !== bp) return bp - ap;
+
       switch (sortBy) {
         case 'relevance':
           if (query.trim()) return b._score - a._score;
@@ -402,7 +483,7 @@ export default function Search() {
     });
 
     return results;
-  }, [records, query, filters, activeTab, sortBy, searchMode, searchWithin]);
+  }, [records, query, filters, activeTab, sortBy, searchMode, searchWithin, searchScope, pinnedIds]);
 
   /* ---------- DUPLICATES ---------- */
   const duplicates = useMemo(() => {
@@ -420,13 +501,27 @@ export default function Search() {
     return dupes;
   }, [records]);
 
+  /* ---------- NEEDS ATTENTION COUNTS ---------- */
+  const needsAttention = useMemo(() => {
+    const today = todayYMD();
+    const overdue = records.filter((r) => r.followUpDate && r.followUpDate < today).length;
+    const todayCount = records.filter((r) => r.followUpDate === today).length;
+    const highPriority = records.filter((r) => r.priority === 'High').length;
+    const neverContacted = records.filter((r) => r.contactStatus === 'Never Contacted').length;
+    const noResponse = records.filter((r) => r.contactStatus === 'No Response').length;
+    const newLeads = records.filter((r) => r.status === 'New').length;
+    return { overdue, todayCount, highPriority, neverContacted, noResponse, newLeads };
+  }, [records]);
+
   /* ---------- RESULT SUMMARY ---------- */
   const resultSummary = useMemo(() => {
     const leads         = scoredRecords.filter((r) => r.recordType === 'lead').length;
     const customers     = scoredRecords.filter((r) => r.recordType === 'customer').length;
     const highPriority  = scoredRecords.filter((r) => r.priority === 'High').length;
     const followUpToday = scoredRecords.filter((r) => r.followUpDate === todayYMD()).length;
-    return { leads, customers, highPriority, followUpToday };
+    const overdue       = scoredRecords.filter((r) => r.followUpDate && r.followUpDate < todayYMD()).length;
+    const neverContacted= scoredRecords.filter((r) => r.contactStatus === 'Never Contacted').length;
+    return { leads, customers, highPriority, followUpToday, overdue, neverContacted };
   }, [scoredRecords]);
 
   const activeFilterCount = Object.entries(filters).filter(
@@ -446,12 +541,12 @@ export default function Search() {
       const chipFilters = (() => {
         switch (quickSearch) {
           case 'todayFollowUps': return { followUpQuick: 'today' };
-          case 'overdue':        return { followUpQuick: 'overdue' };
-          case 'highPriority':   return { priority: 'High' };
           case 'newLeads':       return { status: 'New', contactStatus: 'Never Contacted' };
           case 'missedCalls':    return { contactStatus: 'No Response' };
           case 'recentlyCalled': return { contactStatus: 'Contacted' };
           case 'converted':      return { status: 'Converted' };
+          case 'overdue':        return { followUpQuick: 'overdue' };
+          case 'highPriority':   return { priority: 'High' };
           default:               return {};
         }
       })();
@@ -519,6 +614,13 @@ export default function Search() {
     }
   };
 
+  /* ---------- PIN ---------- */
+  const togglePin = (id) => {
+    setPinnedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
   /* ---------- QUICK ACTIONS ---------- */
   const handleCall = (r) => {
     addRecentSearch(r.name);
@@ -531,6 +633,46 @@ export default function Search() {
 
   const handleFollowUp = (r) => {
     showToast(`Follow-up scheduled for ${r.name}`);
+  };
+
+  /* ---------- CREATE LEAD ---------- */
+  const handleCreateFromNoResults = () => {
+    const looksLikePhone = /^[\d+\-\s()]+$/.test(query) && normalizePhone(query).length >= 10;
+    setShowCreateLead({
+      prefillMobile: looksLikePhone ? normalizePhone(query) : '',
+      prefillName: !looksLikePhone ? query : '',
+    });
+  };
+
+  const handleCreateLead = (data) => {
+    const entry = {
+      id: `lead-${Date.now()}`,
+      recordType: 'lead',
+      name: data.name,
+      mobile: data.mobile,
+      email: data.email || '',
+      leadId: `#LG-${String(1000 + records.length).padStart(4, '0')}`,
+      customerId: '',
+      status: 'New',
+      source: data.source || 'Walk-in',
+      campaign: data.campaign || 'Q3 Outreach',
+      priority: data.priority || 'Medium',
+      budget: '—',
+      location: '—',
+      assignedDate: todayYMD(),
+      followUpDate: '',
+      followUpCompleted: false,
+      lastContact: null,
+      lastActivity: null,
+      contactStatus: 'Never Contacted',
+      agentName: user?.name,
+      projectId: activeWebsiteId,
+      contactSummary: { calls: 0, connected: 0, noAnswer: 0, whatsapp: 0, sms: 0, followUps: 0 },
+      timeline: [],
+    };
+    setRecords((prev) => [entry, ...prev]);
+    setShowCreateLead(null);
+    showToast(`Lead created: ${entry.name}`);
   };
 
   /* ================================================================
@@ -550,7 +692,7 @@ export default function Search() {
           </p>
         </div>
 
-        {/* ================= SEARCH BAR (with Saved dropdown) ================= */}
+        {/* ================= SEARCH BAR ================= */}
         <SearchBar
           query={query}
           setQuery={setQuery}
@@ -566,10 +708,17 @@ export default function Search() {
           onSaveCurrent={() => setShowSaveSearch(true)}
         />
 
+        {/* ================= NEEDS ATTENTION ================= */}
+        <NeedsAttentionStrip
+          counts={needsAttention}
+          activeKey={quickSearch}
+          onPick={applyQuickSearch}
+        />
+
         {/* ================= QUICK SEARCH CHIPS ================= */}
         <QuickSearches activeKey={quickSearch} onPick={applyQuickSearch} />
 
-        {/* ================= RECENT (full width now) ================= */}
+        {/* ================= RECENT ================= */}
         <RecentSearches recent={recentSearches} onPick={(q) => { setQuery(q); addRecentSearch(q); }} />
 
         {/* ================= ADVANCED FILTER PANEL ================= */}
@@ -590,7 +739,7 @@ export default function Search() {
           />
         )}
 
-        {/* ================= TABS + SORT ================= */}
+        {/* ================= TABS + SCOPE + SORT ================= */}
         <div className="card !p-2.5">
           <div className="flex flex-wrap items-center gap-1.5">
             {SEARCH_TABS.map((t) => {
@@ -622,10 +771,8 @@ export default function Search() {
               );
             })}
 
-            <div className="ml-auto flex items-center gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-ink/40">
-                Sort by:
-              </span>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <ScopeDropdown value={searchScope} onChange={setSearchScope} />
               <SortDropdown value={sortBy} onChange={setSortBy} />
             </div>
           </div>
@@ -653,29 +800,35 @@ export default function Search() {
         )}
 
         {/* ================= BULK SELECTION BAR ================= */}
-        {scoredRecords.length > 0 && activeTab === 'advanced' && selectedIds.length > 0 && (
+        {scoredRecords.length > 0 && selectedIds.length > 0 && (
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-brand-magenta/40 bg-brand-magenta/[0.06] px-4 py-2.5">
             <span className="text-xs font-bold text-brand-magenta">
               {selectedIds.length} selected
             </span>
             <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={() => {
-                  showToast(`Follow-up assigned to ${selectedIds.length} records`);
-                  setSelectedIds([]);
-                }}
+                onClick={() => { showToast(`Follow-up assigned to ${selectedIds.length} records`); setSelectedIds([]); }}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 py-1 text-[11px] font-semibold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
               >
                 <Calendar size={11} /> Assign Follow-Up
               </button>
               <button
-                onClick={() => {
-                  showToast(`Tag added to ${selectedIds.length} records`);
-                  setSelectedIds([]);
-                }}
+                onClick={() => { showToast(`Tag added to ${selectedIds.length} records`); setSelectedIds([]); }}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 py-1 text-[11px] font-semibold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
               >
                 <Tag size={11} /> Add Tag
+              </button>
+              <button
+                onClick={() => { showToast(`Priority updated`); setSelectedIds([]); }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 py-1 text-[11px] font-semibold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
+              >
+                <Flame size={11} /> Change Priority
+              </button>
+              <button
+                onClick={() => { showToast(`Marked as contacted`); setSelectedIds([]); }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 py-1 text-[11px] font-semibold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
+              >
+                <CheckCircle2 size={11} /> Mark Contacted
               </button>
               <button
                 onClick={() => setSelectedIds([])}
@@ -693,14 +846,17 @@ export default function Search() {
             hasQuery={query.length > 0 || activeFilterCount > 0}
             query={query}
             onReset={resetFilters}
+            onCreate={handleCreateFromNoResults}
           />
         ) : activeTab === 'advanced' ? (
           <AdvancedResultsView
             records={scoredRecords}
             duplicates={duplicates}
             selectedIds={selectedIds}
+            pinnedIds={pinnedIds}
             onToggleSelect={toggleSelect}
             onToggleSelectAll={toggleSelectAll}
+            onPin={togglePin}
             onView={(r) => { addRecentSearch(r.name); setSelectedRecord(r); }}
             onCall={handleCall}
             onWhatsApp={handleWhatsApp}
@@ -714,6 +870,8 @@ export default function Search() {
                 record={r}
                 query={query}
                 isDuplicate={duplicates.has(normalizePhone(r.mobile))}
+                isPinned={pinnedIds.includes(r.id)}
+                onPin={() => togglePin(r.id)}
                 onView={() => { addRecentSearch(r.name); setSelectedRecord(r); }}
                 onCall={() => handleCall(r)}
                 onWhatsApp={() => handleWhatsApp(r)}
@@ -723,7 +881,7 @@ export default function Search() {
           </div>
         )}
 
-        {/* ================= DRAWERS ================= */}
+        {/* ================= DRAWERS / MODALS ================= */}
         {selectedRecord && (
           <RecordDetailDrawer
             record={selectedRecord}
@@ -751,6 +909,14 @@ export default function Search() {
           />
         )}
 
+        {showCreateLead && (
+          <CreateLeadModal
+            prefill={showCreateLead}
+            onClose={() => setShowCreateLead(null)}
+            onSave={handleCreateLead}
+          />
+        )}
+
         {toast && <Toast message={toast.msg} type={toast.type} />}
       </div>
     </div>
@@ -758,7 +924,74 @@ export default function Search() {
 }
 
 /* ================================================================
-   SEARCH BAR  (now includes the Saved Searches dropdown)
+   NEEDS ATTENTION STRIP
+   ================================================================ */
+function NeedsAttentionStrip({ counts, activeKey, onPick }) {
+  const items = [
+    { key: 'overdue',        label: 'Overdue',         count: counts.overdue,        tone: 'rose',    icon: AlertTriangle },
+    { key: 'missedCalls',    label: 'No Response',     count: counts.noResponse,     tone: 'amber',   icon: RotateCcw },
+    { key: 'todayFollowUps', label: 'Today',           count: counts.todayCount,     tone: 'purple',  icon: CalendarCheck },
+    { key: 'highPriority',   label: 'High Priority',   count: counts.highPriority,   tone: 'rose',    icon: Flame },
+    { key: 'newLeads',       label: 'Never Contacted', count: counts.neverContacted, tone: 'emerald', icon: Sparkles },
+  ];
+
+  const toneMap = {
+    rose:    { bg: 'bg-rose-50',    text: 'text-rose-600',     ring: 'ring-rose-200' },
+    amber:   { bg: 'bg-amber-50',   text: 'text-amber-700',    ring: 'ring-amber-200' },
+    purple:  { bg: 'bg-violet-50',  text: 'text-brand-purple', ring: 'ring-violet-200' },
+    emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600',  ring: 'ring-emerald-200' },
+  };
+
+  const activeItems = items.filter((i) => i.count > 0);
+  if (activeItems.length === 0) return null;
+
+  return (
+    <div className="card !p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-brand-magenta text-white shadow-card">
+          <Zap size={12} />
+        </span>
+        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-rose-600">
+          Needs Attention
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {activeItems.map((item) => {
+          const Icon = item.icon;
+          const t = toneMap[item.tone] || toneMap.rose;
+          const active = activeKey === item.key;
+          return (
+            <button
+              key={item.key}
+              onClick={() => onPick(item.key)}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                active
+                  ? 'border-brand-magenta bg-brand-magenta text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)]'
+                  : 'border-brand-lilac bg-white text-brand-ink/70 hover:border-brand-magenta/40 hover:text-brand-magenta'
+              }`}
+            >
+              <span className={`flex h-5 w-5 items-center justify-center rounded-md ${
+                active ? 'bg-white/25 text-white' : `${t.bg} ${t.text} ring-1 ${t.ring}`
+              }`}>
+                <Icon size={10} />
+              </span>
+              {item.label}
+              <span className={`rounded-full px-1.5 text-[10px] font-bold ${
+                active ? 'bg-white/25 text-white' : `${t.bg} ${t.text}`
+              }`}>
+                {item.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   SEARCH BAR
    ================================================================ */
 function SearchBar({
   query, setQuery, searchMode, setSearchMode,
@@ -825,7 +1058,6 @@ function SearchBar({
             </button>
           )}
 
-          {/* ---- SAVED SEARCHES DROPDOWN ---- */}
           <div className="relative">
             <button
               onClick={() => setSavedOpen((o) => !o)}
@@ -989,7 +1221,7 @@ function QuickSearches({ activeKey, onPick }) {
 }
 
 /* ================================================================
-   RECENT SEARCHES  (standalone, full width)
+   RECENT SEARCHES
    ================================================================ */
 function RecentSearches({ recent, onPick }) {
   if (!recent || recent.length === 0) return null;
@@ -1029,10 +1261,16 @@ function ResultSummary({ total, summary, duplicateCount }) {
         <span className="text-brand-magenta">{total}</span> result{total !== 1 ? 's' : ''} found
       </span>
       <span className="h-4 w-px bg-brand-lilac" />
-      <SummaryPill icon={Target}        label="Leads"            value={summary.leads}         tone="purple" />
-      <SummaryPill icon={UserCheck}     label="Customers"        value={summary.customers}     tone="emerald" />
-      <SummaryPill icon={Flame}         label="High Priority"    value={summary.highPriority}  tone="rose" />
-      <SummaryPill icon={CalendarCheck} label="Follow-Up Today"  value={summary.followUpToday} tone="amber" />
+      <SummaryPill icon={Target}        label="Leads"            value={summary.leads}          tone="purple" />
+      <SummaryPill icon={UserCheck}     label="Customers"        value={summary.customers}      tone="emerald" />
+      <SummaryPill icon={Flame}         label="High Priority"    value={summary.highPriority}   tone="rose" />
+      <SummaryPill icon={CalendarCheck} label="Today"            value={summary.followUpToday}  tone="amber" />
+      {summary.overdue > 0 && (
+        <SummaryPill icon={AlertTriangle} label="Overdue" value={summary.overdue} tone="rose" />
+      )}
+      {summary.neverContacted > 0 && (
+        <SummaryPill icon={Sparkles} label="Never Contacted" value={summary.neverContacted} tone="purple" />
+      )}
       {duplicateCount > 0 && (
         <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700">
           <AlertTriangle size={10} /> {duplicateCount} duplicate group{duplicateCount !== 1 ? 's' : ''}
@@ -1057,6 +1295,53 @@ function SummaryPill({ icon: Icon, label, value, tone }) {
       <span className="text-[11px] text-brand-ink/60">{label}:</span>
       <span className="font-display text-xs font-bold text-brand-ink">{value}</span>
     </span>
+  );
+}
+
+/* ================================================================
+   SCOPE DROPDOWN
+   ================================================================ */
+function ScopeDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const current = SEARCH_SCOPES.find((s) => s.value === value);
+  const Icon = current?.icon || UserCheck;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 rounded-full border border-brand-lilac bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-ink hover:bg-brand-lilac/40"
+      >
+        <Icon size={11} className="text-brand-magenta" />
+        <span className="text-brand-ink/60">Scope:</span>
+        <span className="text-brand-magenta">{current?.label}</span>
+        <ChevronDown size={11} className="text-brand-ink/40" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full z-20 mt-2 w-52 overflow-hidden rounded-xl border border-brand-lilac bg-white p-1 shadow-panel">
+            {SEARCH_SCOPES.map((s) => {
+              const SIcon = s.icon;
+              return (
+                <button
+                  key={s.value}
+                  onClick={() => { onChange(s.value); setOpen(false); }}
+                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs ${
+                    value === s.value
+                      ? 'bg-brand-magenta/10 font-semibold text-brand-magenta'
+                      : 'text-brand-ink/70 hover:bg-brand-lilac/40'
+                  }`}
+                >
+                  <SIcon size={12} />
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -1139,18 +1424,8 @@ function AdvancedFilterPanel({ filters, setFilters, onReset }) {
             <Calendar size={12} /> Assigned Date
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <input
-              type="date"
-              value={filters.dateFrom}
-              onChange={(e) => update('dateFrom', e.target.value)}
-              className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta"
-            />
-            <input
-              type="date"
-              value={filters.dateTo}
-              onChange={(e) => update('dateTo', e.target.value)}
-              className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta"
-            />
+            <input type="date" value={filters.dateFrom} onChange={(e) => update('dateFrom', e.target.value)} className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta" />
+            <input type="date" value={filters.dateTo} onChange={(e) => update('dateTo', e.target.value)} className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta" />
           </div>
         </div>
 
@@ -1159,18 +1434,8 @@ function AdvancedFilterPanel({ filters, setFilters, onReset }) {
             <PhoneCall size={12} /> Follow-Up Date
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <input
-              type="date"
-              value={filters.followUpFrom}
-              onChange={(e) => update('followUpFrom', e.target.value)}
-              className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta"
-            />
-            <input
-              type="date"
-              value={filters.followUpTo}
-              onChange={(e) => update('followUpTo', e.target.value)}
-              className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta"
-            />
+            <input type="date" value={filters.followUpFrom} onChange={(e) => update('followUpFrom', e.target.value)} className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta" />
+            <input type="date" value={filters.followUpTo} onChange={(e) => update('followUpTo', e.target.value)} className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta" />
           </div>
         </div>
       </div>
@@ -1202,39 +1467,25 @@ function FilterField({ icon: Icon, label, value, options, onChange }) {
 }
 
 /* ================================================================
-   NEXT ACTION HELPER
-   ================================================================ */
-function getNextAction(record) {
-  const today = todayYMD();
-  const fu = record.followUpDate;
-
-  if (fu === today) {
-    return { label: 'Follow-up today', tone: 'rose', icon: AlertTriangle };
-  }
-  if (fu && fu < today) {
-    return { label: 'Overdue', tone: 'rose', icon: AlertTriangle };
-  }
-  if (fu === tomorrowYMD()) {
-    return { label: 'Follow-up tomorrow', tone: 'amber', icon: CalendarClock };
-  }
-  if (record.contactStatus === 'Never Contacted') {
-    return { label: 'Call now', tone: 'purple', icon: PhoneCall };
-  }
-  return { label: 'No action', tone: 'emerald', icon: CheckCircle2 };
-}
-
-/* ================================================================
    RESULT ROW
    ================================================================ */
-function ResultRow({ record, query, isDuplicate, onView, onCall, onWhatsApp, onFollowUp }) {
+function ResultRow({ record, query, isDuplicate, isPinned, onPin, onView, onCall, onWhatsApp, onFollowUp }) {
   const isCustomer = record.recordType === 'customer';
   const idLabel    = isCustomer ? record.customerId : record.leadId;
   const action     = getNextAction(record);
   const ActionIcon = action.icon;
   const lastActivityAgo = record.lastActivity?.at ? timeAgo(record.lastActivity.at) : null;
+  const contactAvail = getContactAvailability(record);
+  const lastContactAgo = record.lastContact ? timeAgo(record.lastContact) : null;
 
   return (
     <div className="group relative flex w-full flex-wrap items-center gap-3 rounded-xl border-2 border-brand-lilac/70 bg-white px-3 py-3 transition-all hover:-translate-y-0.5 hover:border-brand-magenta/40 hover:shadow-md sm:flex-nowrap sm:gap-4 sm:px-4">
+      {isPinned && (
+        <span className="absolute -top-1.5 -left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-white shadow-md">
+          <Star size={10} fill="currentColor" />
+        </span>
+      )}
+
       <button
         onClick={onView}
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-sm transition-transform group-hover:scale-110 ${
@@ -1265,38 +1516,39 @@ function ResultRow({ record, query, isDuplicate, onView, onCall, onWhatsApp, onF
             </span>
           )}
         </div>
+
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-brand-ink/50">
-          <span className="inline-flex items-center gap-1">
+          <span className={`inline-flex items-center gap-1 ${!contactAvail.phone ? 'opacity-40 line-through' : ''}`}>
             <Phone size={10} /> <Highlight text={record.mobile} query={query} />
           </span>
-          <span className="inline-flex items-center gap-1">
+          <span className={`inline-flex items-center gap-1 ${!contactAvail.email ? 'opacity-40 line-through' : ''}`}>
             <Mail size={10} /> <Highlight text={record.email} query={query} />
           </span>
           <span className="inline-flex items-center gap-1 font-mono text-brand-purple">
             <Hash size={10} /> <Highlight text={idLabel} query={query} />
           </span>
         </div>
+
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-brand-ink/50">
-          {record.campaign && (
+          {lastContactAgo && (
             <span className="inline-flex items-center gap-1">
-              <Layers size={9} /> {record.campaign}
+              <History size={9} /> Last contact: {lastContactAgo}
             </span>
           )}
-          {lastActivityAgo && (
+          {record.followUpDate && (
+            <span className="inline-flex items-center gap-1 font-semibold text-brand-purple">
+              <CalendarClock size={9} /> Next: {record.followUpDate}
+            </span>
+          )}
+          {record.lastOutcome && (
             <span className="inline-flex items-center gap-1">
-              {record.lastActivity.type === 'note' ? <StickyNote size={9} /> : <PhoneCall size={9} />}
-              {record.lastActivity.label} {lastActivityAgo}
+              <Target size={9} /> {record.lastOutcome}
             </span>
           )}
         </div>
       </button>
 
-      <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ${
-        action.tone === 'rose'    ? 'bg-rose-50 text-rose-600 ring-rose-200' :
-        action.tone === 'amber'   ? 'bg-amber-50 text-amber-700 ring-amber-200' :
-        action.tone === 'emerald' ? 'bg-emerald-50 text-emerald-600 ring-emerald-200' :
-                                    'bg-violet-50 text-brand-purple ring-violet-200'
-      }`}>
+      <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ${NEXT_ACTION_TONES[action.tone] || NEXT_ACTION_TONES.purple}`}>
         <ActionIcon size={10} /> {action.label}
       </span>
 
@@ -1306,6 +1558,17 @@ function ResultRow({ record, query, isDuplicate, onView, onCall, onWhatsApp, onF
 
       <div className="flex shrink-0 items-center gap-1">
         <button
+          onClick={onPin}
+          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-all hover:scale-105 ${
+            isPinned
+              ? 'border-amber-300 bg-amber-100 text-amber-700'
+              : 'border-brand-lilac bg-white text-brand-ink/40 hover:border-amber-300 hover:text-amber-600'
+          }`}
+          title={isPinned ? 'Unpin' : 'Pin'}
+        >
+          <Star size={13} fill={isPinned ? 'currentColor' : 'none'} />
+        </button>
+        <button
           onClick={onCall}
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 transition-transform hover:scale-105"
           title="Call"
@@ -1314,8 +1577,12 @@ function ResultRow({ record, query, isDuplicate, onView, onCall, onWhatsApp, onF
         </button>
         <button
           onClick={onWhatsApp}
-          className="hidden h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 transition-transform hover:scale-105 sm:flex"
-          title="WhatsApp"
+          className={`hidden h-8 w-8 items-center justify-center rounded-lg border transition-transform hover:scale-105 sm:flex ${
+            contactAvail.whatsapp
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+              : 'border-brand-lilac bg-white text-brand-ink/30'
+          }`}
+          title={contactAvail.whatsapp ? 'WhatsApp' : 'WhatsApp unavailable'}
         >
           <MessageCircle size={13} />
         </button>
@@ -1342,8 +1609,8 @@ function ResultRow({ record, query, isDuplicate, onView, onCall, onWhatsApp, onF
    ADVANCED RESULTS VIEW
    ================================================================ */
 function AdvancedResultsView({
-  records, duplicates,
-  selectedIds, onToggleSelect, onToggleSelectAll,
+  records, duplicates, selectedIds, pinnedIds,
+  onToggleSelect, onToggleSelectAll, onPin,
   onView, onCall, onWhatsApp, onFollowUp,
 }) {
   const allSelected = records.length > 0 && selectedIds.length === records.length;
@@ -1355,16 +1622,8 @@ function AdvancedResultsView({
           <thead className="border-b border-brand-lilac/60 bg-brand-mist/40 text-[10px] font-bold uppercase tracking-wide text-brand-ink/50">
             <tr>
               <th className="px-3 py-3">
-                <button
-                  onClick={onToggleSelectAll}
-                  className="flex items-center justify-center"
-                  title={allSelected ? 'Deselect all' : 'Select all'}
-                >
-                  {allSelected ? (
-                    <CheckSquare size={14} className="text-brand-magenta" />
-                  ) : (
-                    <Square size={14} className="text-brand-ink/40" />
-                  )}
+                <button onClick={onToggleSelectAll} className="flex items-center justify-center" title={allSelected ? 'Deselect all' : 'Select all'}>
+                  {allSelected ? <CheckSquare size={14} className="text-brand-magenta" /> : <Square size={14} className="text-brand-ink/40" />}
                 </button>
               </th>
               <th className="px-4 py-3">Name</th>
@@ -1384,20 +1643,24 @@ function AdvancedResultsView({
               const ActionIcon = action.icon;
               const isSelected = selectedIds.includes(r.id);
               const isDuplicate = duplicates.has(normalizePhone(r.mobile));
+              const isPinned = pinnedIds.includes(r.id);
 
               return (
                 <tr key={r.id} className={`hover:bg-brand-mist/40 ${isSelected ? 'bg-brand-magenta/5' : ''}`}>
                   <td className="px-3 py-3">
                     <button onClick={() => onToggleSelect(r.id)} className="flex items-center justify-center">
-                      {isSelected ? (
-                        <CheckSquare size={14} className="text-brand-magenta" />
-                      ) : (
-                        <Square size={14} className="text-brand-ink/40" />
-                      )}
+                      {isSelected ? <CheckSquare size={14} className="text-brand-magenta" /> : <Square size={14} className="text-brand-ink/40" />}
                     </button>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <div className="flex items-center gap-2">
+                      <button onClick={() => onPin(r.id)} className="flex shrink-0 items-center justify-center">
+                        <Star
+                          size={12}
+                          fill={isPinned ? 'currentColor' : 'none'}
+                          className={isPinned ? 'text-amber-500' : 'text-brand-ink/30 hover:text-amber-500'}
+                        />
+                      </button>
                       <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white ${
                         r.recordType === 'customer'
                           ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
@@ -1407,9 +1670,7 @@ function AdvancedResultsView({
                       </span>
                       <div className="flex flex-col">
                         <span className="font-semibold text-brand-ink">{r.name}</span>
-                        {isDuplicate && (
-                          <span className="text-[9px] font-bold text-amber-600">⚠ Duplicate</span>
-                        )}
+                        {isDuplicate && <span className="text-[9px] font-bold text-amber-600">⚠ Duplicate</span>}
                       </div>
                     </div>
                   </td>
@@ -1426,48 +1687,25 @@ function AdvancedResultsView({
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${
-                      action.tone === 'rose'    ? 'bg-rose-50 text-rose-600 ring-rose-200' :
-                      action.tone === 'amber'   ? 'bg-amber-50 text-amber-700 ring-amber-200' :
-                      action.tone === 'emerald' ? 'bg-emerald-50 text-emerald-600 ring-emerald-200' :
-                                                  'bg-violet-50 text-brand-purple ring-violet-200'
-                    }`}>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${NEXT_ACTION_TONES[action.tone]}`}>
                       <ActionIcon size={9} /> {action.label}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-brand-ink/70">{r.source}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-brand-ink/70">{r.campaign}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-brand-ink/70">
-                    {r.followUpDate || '—'}
-                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-brand-ink/70">{r.followUpDate || '—'}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => onCall(r)}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 hover:scale-105"
-                        title="Call"
-                      >
+                      <button onClick={() => onCall(r)} className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 hover:scale-105" title="Call">
                         <Phone size={11} />
                       </button>
-                      <button
-                        onClick={() => onWhatsApp(r)}
-                        className="hidden h-7 w-7 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 hover:scale-105 sm:flex"
-                        title="WhatsApp"
-                      >
+                      <button onClick={() => onWhatsApp(r)} className="hidden h-7 w-7 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 hover:scale-105 sm:flex" title="WhatsApp">
                         <MessageCircle size={11} />
                       </button>
-                      <button
-                        onClick={() => onFollowUp(r)}
-                        className="hidden h-7 w-7 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:scale-105 sm:flex"
-                        title="Follow-up"
-                      >
+                      <button onClick={() => onFollowUp(r)} className="hidden h-7 w-7 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:scale-105 sm:flex" title="Follow-up">
                         <Calendar size={11} />
                       </button>
-                      <button
-                        onClick={() => onView(r)}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 hover:border-brand-magenta/40 hover:text-brand-magenta"
-                        title="View"
-                      >
+                      <button onClick={() => onView(r)} className="flex h-7 w-7 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 hover:border-brand-magenta/40 hover:text-brand-magenta" title="View">
                         <Eye size={11} />
                       </button>
                     </div>
@@ -1491,6 +1729,7 @@ function RecordDetailDrawer({
 }) {
   const isCustomer = record.recordType === 'customer';
   const idLabel = isCustomer ? record.customerId : record.leadId;
+  const [activeTab, setActiveTab] = useState('overview');
 
   const related = useMemo(() => {
     const phone = normalizePhone(record.mobile);
@@ -1508,232 +1747,324 @@ function RecordDetailDrawer({
 
   const action = getNextAction(record);
   const ActionIcon = action.icon;
+  const contactAvail = getContactAvailability(record);
+  const summary = record.contactSummary || {};
 
-  const actions = [
-    { key: 'call',     icon: Phone,         label: 'Call',       tone: 'emerald', onClick: onCall },
-    { key: 'whatsapp', icon: MessageCircle, label: 'WhatsApp',   tone: 'emerald', onClick: onWhatsApp },
-    { key: 'sms',      icon: MessageSquare, label: 'SMS',        tone: 'purple',  onClick: null },
-    { key: 'email',    icon: Mail,          label: 'Email',      tone: 'amber',   onClick: null },
-    { key: 'note',     icon: StickyNote,    label: 'Note',       tone: 'purple',  onClick: null },
-    { key: 'followUp', icon: Calendar,      label: 'Follow-Up',  tone: 'amber',   onClick: onFollowUp },
+  const drawerTabs = [
+    { key: 'overview', label: 'Overview', icon: User },
+    { key: 'timeline', label: 'Timeline', icon: History },
   ];
 
-  const activityTimeline = [
-    { at: record.lastActivity?.at || record.lastContact, type: record.lastActivity?.type || 'call', label: record.lastActivity?.label || 'Contacted' },
-    { at: new Date(Date.now() - 2 * 86400000).toISOString(), type: 'note',  label: 'Note added' },
-    { at: new Date(Date.now() - 4 * 86400000).toISOString(), type: 'call',  label: 'Outbound call' },
-  ].filter((t) => t.at);
+  const contextActions = (() => {
+    if (record.status === 'Converted') {
+      return [
+        { key: 'customer', icon: UserCheck,   label: 'View Customer', tone: 'emerald', onClick: null },
+        { key: 'msg',      icon: MessageCircle, label: 'Communication', tone: 'emerald', onClick: onWhatsApp },
+        { key: 'timeline', icon: History,     label: 'View Timeline', tone: 'purple',  onClick: () => setActiveTab('timeline') },
+      ];
+    }
+    if (action.label === 'Overdue' || action.label === 'Follow-up Today') {
+      return [
+        { key: 'call', icon: Phone,         label: 'Call Now',   tone: 'rose',    onClick: onCall },
+        { key: 'fu',   icon: Calendar,      label: 'Follow-Up',  tone: 'amber',   onClick: onFollowUp },
+        { key: 'wa',   icon: MessageCircle, label: 'WhatsApp',   tone: 'emerald', onClick: contactAvail.whatsapp ? onWhatsApp : null },
+      ];
+    }
+    if (action.label === 'Contact Now') {
+      return [
+        { key: 'call', icon: Phone,         label: 'Call Now',     tone: 'purple', onClick: onCall },
+        { key: 'wa',   icon: MessageCircle, label: 'WhatsApp',     tone: 'emerald',onClick: onWhatsApp },
+        { key: 'fu',   icon: Calendar,      label: 'Schedule FU',  tone: 'amber',  onClick: onFollowUp },
+      ];
+    }
+    if (action.label === 'Retry Call') {
+      return [
+        { key: 'call', icon: RotateCcw,     label: 'Call Again',  tone: 'amber',  onClick: onCall },
+        { key: 'fu',   icon: Calendar,      label: 'Retry Later', tone: 'amber',  onClick: onFollowUp },
+        { key: 'wa',   icon: MessageCircle, label: 'WhatsApp',    tone: 'emerald',onClick: onWhatsApp },
+      ];
+    }
+    return [
+      { key: 'call', icon: Phone,         label: 'Call',       tone: 'emerald', onClick: onCall },
+      { key: 'wa',   icon: MessageCircle, label: 'WhatsApp',   tone: 'emerald', onClick: onWhatsApp },
+      { key: 'sms',  icon: MessageSquare, label: 'SMS',        tone: 'purple',  onClick: null },
+      { key: 'email',icon: Mail,          label: 'Email',      tone: 'amber',   onClick: null },
+      { key: 'note', icon: StickyNote,    label: 'Note',       tone: 'purple',  onClick: null },
+      { key: 'fu',   icon: Calendar,      label: 'Follow-Up',  tone: 'amber',   onClick: onFollowUp },
+    ];
+  })();
+
+  const timeline = record.timeline || [];
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
-      <div className="h-full w-full max-w-lg overflow-y-auto bg-white shadow-panel">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-brand-lilac bg-white p-5">
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] uppercase tracking-wider text-brand-magenta">
-              {isCustomer ? 'Customer' : 'Lead'} · {idLabel}
-            </p>
-            <h3 className="truncate font-display text-lg font-semibold text-brand-ink">
-              {record.name}
-            </h3>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="space-y-5 p-5">
-          <div className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 ${
-            action.tone === 'rose'    ? 'border-rose-200 bg-rose-50' :
-            action.tone === 'amber'   ? 'border-amber-200 bg-amber-50' :
-            action.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50' :
-                                        'border-violet-200 bg-violet-50'
-          }`}>
-            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-              action.tone === 'rose'    ? 'bg-white text-rose-600' :
-              action.tone === 'amber'   ? 'bg-white text-amber-700' :
-              action.tone === 'emerald' ? 'bg-white text-emerald-600' :
-                                          'bg-white text-brand-purple'
-            }`}>
-              <ActionIcon size={16} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-brand-ink/40">
-                Next Action
-              </p>
-              <p className="text-sm font-bold text-brand-ink">{action.label}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className={`flex h-16 w-16 items-center justify-center rounded-full text-base font-bold text-white ${
-              isCustomer
-                ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
-                : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
-            }`}>
-              {String(record.name || 'U').split(' ').map((n) => n[0]).slice(0, 2).join('')}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-brand-ink">{record.name}</p>
-              <p className="text-sm text-brand-ink/60">{record.mobile}</p>
-              <p className="flex items-center gap-1 text-xs text-brand-ink/50">
-                <Mail size={11} /> {record.email}
-              </p>
-            </div>
-            <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[record.status] || STATUS_STYLES.New}`}>
-              {record.status}
-            </span>
-          </div>
-
-          {related && (
-            <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
-              <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-purple">
-                <Link2 size={11} /> Related Record
-              </p>
-              <button
-                onClick={() => onViewRelated(related.id)}
-                className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left transition-all hover:shadow-sm"
-              >
-                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white ${
-                  related.recordType === 'customer'
-                    ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
-                    : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
-                }`}>
-                  {String(related.name || 'U').split(' ').map((n) => n[0]).slice(0, 2).join('')}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold text-brand-ink">{related.name}</p>
-                  <p className="text-[10px] text-brand-ink/50">
-                    {related.recordType === 'customer' ? 'Customer' : 'Lead'} ·{' '}
-                    {related.recordType === 'customer' ? related.customerId : related.leadId}
-                  </p>
-                </div>
-                <ChevronRight size={12} className="text-brand-ink/30" />
+      <div className="flex h-full w-full max-w-lg bg-white shadow-panel">
+        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+          <div className="sticky top-0 z-10 border-b border-brand-lilac bg-white">
+            <div className="flex items-center justify-between p-5 pb-3">
+              <div className="min-w-0">
+                <p className="font-mono text-[10px] uppercase tracking-wider text-brand-magenta">
+                  {isCustomer ? 'Customer' : 'Lead'} · {idLabel}
+                </p>
+                <h3 className="truncate font-display text-lg font-semibold text-brand-ink">
+                  {record.name}
+                </h3>
+              </div>
+              <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+                <X size={18} />
               </button>
             </div>
-          )}
 
-          {duplicateList.length > 0 && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                <AlertTriangle size={11} /> Possible Duplicates ({duplicateList.length})
-              </p>
-              <div className="space-y-1.5">
-                {duplicateList.map((d) => (
+            <div className="flex gap-1 px-5 pb-3">
+              {drawerTabs.map((t) => {
+                const Icon = t.icon;
+                const active = activeTab === t.key;
+                return (
                   <button
-                    key={d.id}
-                    onClick={() => onViewRelated(d.id)}
-                    className="flex w-full items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-left transition-all hover:shadow-sm"
+                    key={t.key}
+                    onClick={() => setActiveTab(t.key)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                      active
+                        ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-card'
+                        : 'text-brand-ink/60 hover:bg-brand-lilac/50 hover:text-brand-magenta'
+                    }`}
                   >
-                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white ${
-                      d.recordType === 'customer'
-                        ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
-                        : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
-                    }`}>
-                      {String(d.name || 'U').split(' ').map((n) => n[0]).slice(0, 2).join('')}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[11px] font-semibold text-brand-ink">{d.name}</p>
-                      <p className="text-[10px] text-brand-ink/50">
-                        {d.recordType === 'customer' ? d.customerId : d.leadId}
-                      </p>
-                    </div>
-                    <ChevronRight size={11} className="text-brand-ink/30" />
+                    <Icon size={11} />
+                    {t.label}
                   </button>
-                ))}
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-5 p-5">
+            <div className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 ${
+              action.tone === 'rose'    ? 'border-rose-200 bg-rose-50' :
+              action.tone === 'amber'   ? 'border-amber-200 bg-amber-50' :
+              action.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50' :
+              action.tone === 'slate'   ? 'border-slate-200 bg-slate-50' :
+                                          'border-violet-200 bg-violet-50'
+            }`}>
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white ${
+                action.tone === 'rose'    ? 'text-rose-600' :
+                action.tone === 'amber'   ? 'text-amber-700' :
+                action.tone === 'emerald' ? 'text-emerald-600' :
+                action.tone === 'slate'   ? 'text-slate-600' :
+                                            'text-brand-purple'
+              }`}>
+                <ActionIcon size={16} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-brand-ink/40">
+                  Next Action
+                </p>
+                <p className="text-sm font-bold text-brand-ink">{action.label}</p>
               </div>
             </div>
-          )}
 
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-brand-lilac bg-brand-mist/40 px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-brand-ink/40">
-                {isCustomer ? 'Customer ID' : 'Lead ID'}
-              </p>
-              <p className="truncate font-mono text-xs font-bold text-brand-purple">{idLabel}</p>
-            </div>
-            <button
-              onClick={() => onCopyId(idLabel)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 py-1.5 text-[11px] font-semibold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
-            >
-              <Copy size={11} /> Copy
-            </button>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            {actions.map((a) => {
-              const Icon = a.icon;
-              const tones = {
-                emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-200',
-                purple:  'bg-violet-50 text-brand-purple ring-violet-200',
-                amber:   'bg-amber-50 text-amber-600 ring-amber-200',
-              };
-              const t = tones[a.tone];
-              return (
-                <button
-                  key={a.key}
-                  onClick={a.onClick || (() => {})}
-                  className="flex flex-col items-center gap-1 rounded-xl border border-brand-lilac bg-white py-2.5 text-[10px] font-bold text-brand-ink transition-all hover:-translate-y-0.5 hover:border-brand-magenta/40 hover:shadow-sm"
-                >
-                  <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${t} ring-1`}>
-                    <Icon size={14} />
+            {activeTab === 'overview' && (
+              <>
+                <div className="flex items-center gap-3">
+                  <span className={`flex h-16 w-16 items-center justify-center rounded-full text-base font-bold text-white ${
+                    isCustomer
+                      ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
+                      : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
+                  }`}>
+                    {String(record.name || 'U').split(' ').map((n) => n[0]).slice(0, 2).join('')}
                   </span>
-                  {a.label}
-                </button>
-              );
-            })}
-          </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-brand-ink">{record.name}</p>
+                    <p className="text-sm text-brand-ink/60">{record.mobile}</p>
+                    <p className="flex items-center gap-1 text-xs text-brand-ink/50">
+                      <Mail size={11} /> {record.email}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[record.status] || STATUS_STYLES.New}`}>
+                    {record.status}
+                  </span>
+                </div>
 
-          <div className="card !p-4 space-y-2.5">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
-              Details
-            </p>
-            <Row icon={Flame}       label="Priority"  value={record.priority} />
-            <Row icon={Layers}      label="Source"    value={record.source} />
-            <Row icon={Building2}   label="Campaign"  value={record.campaign} />
-            <Row icon={IndianRupee} label="Budget"    value={record.budget} />
-            <Row icon={MapPin}      label="Location"  value={record.location} />
-            <Row icon={UserX}       label="Contact"   value={record.contactStatus} />
-          </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <AvailabilityChip icon={Phone}         label="Phone"    available={contactAvail.phone}    tone="emerald" />
+                  <AvailabilityChip icon={MessageCircle} label="WhatsApp" available={contactAvail.whatsapp} tone="emerald" />
+                  <AvailabilityChip icon={Mail}          label="Email"    available={contactAvail.email}    tone="amber" />
+                </div>
 
-          <div className="card !p-4 space-y-2.5">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
-              Timeline
-            </p>
-            <Row icon={Calendar} label="Assigned"     value={record.assignedDate} />
-            <Row icon={Phone}    label="Last contact" value={record.lastContact ? (timeAgo(record.lastContact) || record.lastContact) : '—'} />
-            <Row icon={Clock}    label="Follow-up"    value={record.followUpDate || '—'} />
-          </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {contextActions.map((a) => {
+                    const Icon = a.icon;
+                    const tones = {
+                      emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-200',
+                      purple:  'bg-violet-50 text-brand-purple ring-violet-200',
+                      amber:   'bg-amber-50 text-amber-600 ring-amber-200',
+                      rose:    'bg-rose-50 text-rose-600 ring-rose-200',
+                    };
+                    const t = tones[a.tone];
+                    return (
+                      <button
+                        key={a.key}
+                        onClick={a.onClick || (() => {})}
+                        className="flex flex-col items-center gap-1 rounded-xl border border-brand-lilac bg-white py-2.5 text-[10px] font-bold text-brand-ink transition-all hover:-translate-y-0.5 hover:border-brand-magenta/40 hover:shadow-sm"
+                      >
+                        <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${t} ring-1`}>
+                          <Icon size={14} />
+                        </span>
+                        {a.label}
+                      </button>
+                    );
+                  })}
+                </div>
 
-          {activityTimeline.length > 0 && (
-            <div className="card !p-4">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
-                Recent Activity
-              </p>
-              <div className="relative space-y-3">
-                <span className="pointer-events-none absolute left-[7px] top-3 bottom-3 w-px bg-brand-lilac" />
-                {activityTimeline.map((t, i) => (
-                  <div key={i} className="relative flex items-start gap-3">
-                    <span className={`relative z-10 mt-1 h-3.5 w-3.5 shrink-0 rounded-full ring-4 ring-white ${
-                      t.type === 'note' ? 'bg-amber-500' : 'bg-brand-purple'
-                    }`} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-brand-ink">{t.label}</p>
-                      <p className="text-[10px] text-brand-ink/40">
-                        {timeAgo(t.at) || new Date(t.at).toLocaleDateString()}
-                      </p>
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-brand-lilac bg-brand-mist/40 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-brand-ink/40">
+                      {isCustomer ? 'Customer ID' : 'Lead ID'}
+                    </p>
+                    <p className="truncate font-mono text-xs font-bold text-brand-purple">{idLabel}</p>
+                  </div>
+                  <button
+                    onClick={() => onCopyId(idLabel)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 py-1.5 text-[11px] font-semibold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
+                  >
+                    <Copy size={11} /> Copy
+                  </button>
+                </div>
+
+                <div className="card !p-4 space-y-2.5">
+                  <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-brand-magenta">
+                    <Sparkles size={11} /> Customer Snapshot
+                  </p>
+                  <Row icon={Flame}       label="Priority"       value={record.priority} />
+                  <Row icon={Layers}      label="Source"         value={record.source} />
+                  <Row icon={Building2}   label="Campaign"       value={record.campaign} />
+                  <Row icon={IndianRupee} label="Budget"         value={record.budget} />
+                  <Row icon={MapPin}      label="Location"       value={record.location} />
+                  <Row icon={Clock}       label="Preferred Time" value={record.preferredContact} />
+                </div>
+
+                {summary.calls !== undefined && (
+                  <div className="card !p-4">
+                    <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-brand-purple">
+                      <ClipboardList size={11} /> Contact Summary
+                    </p>
+                    <div className="grid grid-cols-4 gap-2">
+                      <SummaryTile label="Calls"      value={summary.calls}      tone="purple" />
+                      <SummaryTile label="Connected"  value={summary.connected}  tone="emerald" />
+                      <SummaryTile label="No Answer"  value={summary.noAnswer}   tone="rose" />
+                      <SummaryTile label="Messages"   value={summary.whatsapp + summary.sms} tone="amber" />
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                )}
 
-          <div className="card !p-4 space-y-2.5">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
-              Assigned
-            </p>
-            <Row icon={UserCheck} label="Agent"   value={record.agentName || 'You'} />
-            <Row icon={ShieldCheck_Icon} label="Project" value={record.projectId || '—'} />
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink/50">
+                      <Clock size={10} className="inline" /> Last Contact
+                    </p>
+                    <p className="text-xs font-semibold text-brand-ink">
+                      {record.lastContact ? timeAgo(record.lastContact) : 'Never'}
+                    </p>
+                    {record.lastOutcome && (
+                      <p className="text-[10px] text-brand-ink/60">{record.lastOutcome}</p>
+                    )}
+                  </div>
+                  <div className="rounded-xl border-2 border-violet-200 bg-violet-50 p-3">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-purple opacity-70">
+                      <CalendarClock size={10} className="inline" /> Next Contact
+                    </p>
+                    <p className="text-xs font-bold text-brand-purple">
+                      {record.followUpDate || 'Not scheduled'}
+                    </p>
+                  </div>
+                </div>
+
+                {related && (
+                  <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
+                    <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-purple">
+                      <Link2 size={11} /> Related Record
+                    </p>
+                    <button
+                      onClick={() => onViewRelated(related.id)}
+                      className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left transition-all hover:shadow-sm"
+                    >
+                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white ${
+                        related.recordType === 'customer'
+                          ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
+                          : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
+                      }`}>
+                        {String(related.name || 'U').split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-brand-ink">{related.name}</p>
+                        <p className="text-[10px] text-brand-ink/50">
+                          {related.recordType === 'customer' ? 'Customer' : 'Lead'} ·{' '}
+                          {related.recordType === 'customer' ? related.customerId : related.leadId}
+                        </p>
+                      </div>
+                      <ChevronRight size={12} className="text-brand-ink/30" />
+                    </button>
+                  </div>
+                )}
+
+                {duplicateList.length > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                      <AlertTriangle size={11} /> Possible Duplicates ({duplicateList.length})
+                    </p>
+                    <div className="space-y-1.5">
+                      {duplicateList.map((d) => (
+                        <button
+                          key={d.id}
+                          onClick={() => onViewRelated(d.id)}
+                          className="flex w-full items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-left transition-all hover:shadow-sm"
+                        >
+                          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white ${
+                            d.recordType === 'customer'
+                              ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
+                              : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
+                          }`}>
+                            {String(d.name || 'U').split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[11px] font-semibold text-brand-ink">{d.name}</p>
+                            <p className="text-[10px] text-brand-ink/50">
+                              {d.recordType === 'customer' ? d.customerId : d.leadId}
+                            </p>
+                          </div>
+                          <ChevronRight size={11} className="text-brand-ink/30" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="card !p-4 space-y-2.5">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
+                    Assigned
+                  </p>
+                  <Row icon={UserCheck} label="Agent"   value={record.agentName || 'You'} />
+                  <Row icon={Shield}    label="Project" value={record.projectId || '—'} />
+                </div>
+              </>
+            )}
+
+            {activeTab === 'timeline' && (
+              <div>
+                <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
+                  <History size={12} /> Customer Timeline
+                </p>
+                {timeline.length === 0 ? (
+                  <p className="text-sm text-brand-ink/50">No activity recorded yet.</p>
+                ) : (
+                  <div className="relative space-y-3">
+                    <span className="pointer-events-none absolute left-[15px] top-4 bottom-4 w-px bg-brand-lilac" />
+                    {timeline.map((t, i) => (
+                      <TimelineItem key={i} item={t} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1741,12 +2072,65 @@ function RecordDetailDrawer({
   );
 }
 
-const ShieldCheck_Icon = ({ size = 12, className }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    <path d="m9 12 2 2 4-4" />
-  </svg>
-);
+function AvailabilityChip({ icon: Icon, label, available, tone }) {
+  const tones = {
+    emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', ring: 'ring-emerald-200' },
+    amber:   { bg: 'bg-amber-50',   text: 'text-amber-700',   ring: 'ring-amber-200' },
+    rose:    { bg: 'bg-rose-50',    text: 'text-rose-600',    ring: 'ring-rose-200' },
+  };
+  const t = tones[tone] || tones.emerald;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+      available ? 'border-brand-lilac bg-white text-brand-ink/70' : 'border-dashed border-brand-lilac bg-brand-mist/40 text-brand-ink/40'
+    }`}>
+      <span className={`flex h-4 w-4 items-center justify-center rounded ${available ? `${t.bg} ${t.text} ring-1 ${t.ring}` : 'bg-brand-mist text-brand-ink/40'}`}>
+        <Icon size={9} />
+      </span>
+      {available ? label : `${label} unavailable`}
+    </span>
+  );
+}
+
+function SummaryTile({ label, value, tone }) {
+  const tones = {
+    purple:  'bg-violet-50 text-brand-purple',
+    emerald: 'bg-emerald-50 text-emerald-600',
+    rose:    'bg-rose-50 text-rose-600',
+    amber:   'bg-amber-50 text-amber-700',
+  };
+  return (
+    <div className={`flex flex-col items-center justify-center rounded-lg ${tones[tone]} py-2`}>
+      <span className="font-display text-lg font-bold">{value ?? 0}</span>
+      <span className="text-[9px] font-semibold uppercase tracking-wider opacity-80">{label}</span>
+    </div>
+  );
+}
+
+function TimelineItem({ item }) {
+  const tone = (() => {
+    if (item.type === 'follow-up') return { ring: 'bg-amber-100 text-amber-700', Icon: Calendar };
+    if (item.type === 'note')      return { ring: 'bg-amber-100 text-amber-700', Icon: StickyNote };
+    if (item.type === 'whatsapp')  return { ring: 'bg-emerald-100 text-emerald-600', Icon: MessageCircle };
+    if (item.type === 'call')      return { ring: 'bg-violet-100 text-brand-purple', Icon: PhoneCall };
+    return { ring: 'bg-slate-100 text-slate-600', Icon: Phone };
+  })();
+  const Icon = tone.Icon;
+
+  return (
+    <div className="relative flex items-start gap-3">
+      <span className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-white ${tone.ring}`}>
+        <Icon size={12} />
+      </span>
+      <div className="min-w-0 flex-1 rounded-xl border border-brand-lilac/60 bg-white p-2.5">
+        <p className="text-xs font-semibold text-brand-ink capitalize">{item.label}</p>
+        {item.detail && <p className="mt-0.5 text-[11px] text-brand-ink/60">{item.detail}</p>}
+        <p className="mt-0.5 text-[10px] text-brand-ink/40">
+          {timeAgo(item.at) || new Date(item.at).toLocaleDateString()}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function Row({ icon: Icon, label, value }) {
   return (
@@ -1792,10 +2176,7 @@ function SaveSearchModal({ defaultName, onClose, onSave }) {
         />
 
         <div className="flex gap-2">
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
-          >
+          <button onClick={onClose} className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40">
             Cancel
           </button>
           <button
@@ -1812,9 +2193,111 @@ function SaveSearchModal({ defaultName, onClose, onSave }) {
 }
 
 /* ================================================================
+   CREATE LEAD MODAL
+   ================================================================ */
+function CreateLeadModal({ prefill, onClose, onSave }) {
+  const [name, setName]         = useState(prefill.prefillName || '');
+  const [mobile, setMobile]     = useState(prefill.prefillMobile || '');
+  const [email, setEmail]       = useState('');
+  const [source, setSource]     = useState('Walk-in');
+  const [campaign, setCampaign] = useState('Q3 Outreach');
+  const [priority, setPriority] = useState('Medium');
+
+  const canSave = name.trim() && normalizePhone(mobile).length === 10;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-panel">
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white">
+              <UserPlus size={18} />
+            </div>
+            <div>
+              <h3 className="font-display text-lg font-semibold text-brand-ink">Create New Lead</h3>
+              <p className="text-xs text-brand-ink/50">Add a new record to the CRM</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Name *</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Rahul Kumar"
+              className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Mobile *</label>
+              <input
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="10-digit number"
+                className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Email</label>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="optional"
+                className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Source</label>
+              <select value={source} onChange={(e) => setSource(e.target.value)} className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta">
+                {SOURCE_OPTIONS.filter((s) => s !== 'All').map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Priority</label>
+              <select value={priority} onChange={(e) => setPriority(e.target.value)} className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta">
+                {PRIORITY_OPTIONS.filter((p) => p !== 'All').map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Campaign</label>
+            <select value={campaign} onChange={(e) => setCampaign(e.target.value)} className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta">
+              {CAMPAIGN_OPTIONS.filter((c) => c !== 'All').map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-5 flex gap-2">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40">
+            Cancel
+          </button>
+          <button
+            onClick={() => canSave && onSave({ name: name.trim(), mobile, email: email.trim(), source, campaign, priority })}
+            disabled={!canSave}
+            className="flex-1 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110 disabled:opacity-50"
+          >
+            Create Lead
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
    EMPTY STATE
    ================================================================ */
-function EmptyState({ hasQuery, query, onReset }) {
+function EmptyState({ hasQuery, query, onReset, onCreate }) {
+  const looksLikePhone = /^[\d+\-\s()]+$/.test(query) && normalizePhone(query).length >= 10;
+
   return (
     <div className="card flex flex-col items-center justify-center gap-3 py-16 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-lilac text-brand-magenta">
@@ -1827,12 +2310,18 @@ function EmptyState({ hasQuery, query, onReset }) {
           </p>
           <p className="max-w-sm text-sm text-brand-ink/50">
             {query ? (
-              <>Nothing matched <span className="font-semibold text-brand-magenta">"{query}"</span>. Try removing some filters.</>
+              <>Nothing matched <span className="font-semibold text-brand-magenta">"{query}"</span>.</>
             ) : (
               <>No records match your current filters.</>
             )}
           </p>
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <button
+              onClick={onCreate}
+              className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-4 py-2 text-xs font-semibold text-white shadow-card hover:brightness-110"
+            >
+              <Plus size={12} /> {looksLikePhone ? 'Create Lead with this number' : 'Create New Lead'}
+            </button>
             <button
               onClick={onReset}
               className="inline-flex items-center gap-1.5 rounded-full border border-brand-lilac bg-white px-4 py-2 text-xs font-semibold text-brand-ink/70 hover:border-brand-magenta/40 hover:text-brand-magenta"
@@ -1847,7 +2336,7 @@ function EmptyState({ hasQuery, query, onReset }) {
             Start searching
           </p>
           <p className="max-w-sm text-sm text-brand-ink/50">
-            Search by name, phone, email, lead ID, or customer ID. Use quick chips above for common work lists.
+            Search by name, phone, email, lead ID, or customer ID. Use the Needs Attention chips above for common work lists.
           </p>
         </>
       )}

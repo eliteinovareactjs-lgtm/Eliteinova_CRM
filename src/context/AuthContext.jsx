@@ -1,3 +1,4 @@
+// src/context/AuthContext.jsx
 import { createContext, useContext, useMemo, useState } from 'react';
 import { USERS, WEBSITES } from '../data/mockData';
 
@@ -8,14 +9,30 @@ export function AuthProvider({ children }) {
   const [activeWebsiteId, setActiveWebsiteId] = useState(null);
 
   const login = (username, password, role) => {
+    /* Match username + password + role */
     const match = USERS.find(
-      (u) => u.username === username && u.password === password && u.role === role
+      (u) =>
+        u.username === username &&
+        u.password === password &&
+        u.role === role
     );
+
     if (!match) {
-      return { ok: false, message: 'Invalid credentials. Check your ID and password.' };
+      return {
+        ok: false,
+        message: 'Invalid credentials. Check your ID and password.',
+      };
     }
+
     setUser(match);
-    setActiveWebsiteId(match.websiteId ?? WEBSITES[0].id);
+
+    /* Super admin has no default website — leave it null and let them pick */
+    if (match.role === 'superadmin') {
+      setActiveWebsiteId(null);
+    } else {
+      setActiveWebsiteId(match.websiteId ?? WEBSITES[0]?.id ?? null);
+    }
+
     return { ok: true };
   };
 

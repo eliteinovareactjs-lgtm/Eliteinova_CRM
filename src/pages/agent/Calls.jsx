@@ -1,16 +1,15 @@
 // src/pages/agent/Calls.jsx
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneCall,
-  Clock, User, Mic, MicOff, Play, Pause, X, Headphones, Search,
+  Clock, User, Mic, MicOff, Play, Pause, X, Search,
   ChevronDown, ChevronRight,
   Volume2, VolumeX, PauseCircle, PlayCircle,
   ArrowRightLeft, PhoneOff, FileAudio, Download, Calendar,
   StickyNote, CheckCircle2, AlertCircle, ListFilter, Inbox, History,
-  Tag, TrendingUp, PhoneForwarded, Delete, Sparkles, Zap,
-  AlertTriangle, Timer, SkipForward, Hash, Flame,
-  MessageCircle, Volume, Gauge, PlaySquare, Building2, Briefcase,
-  MapPin, IndianRupee, Layers, ArrowRight, UserCheck, UserX,
+  Tag, TrendingUp, Sparkles, Zap,
+  AlertTriangle, Timer, Flame, Megaphone,
+  Building2, MapPin, IndianRupee, Layers,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { CALLS } from '../../data/mockData';
@@ -60,6 +59,8 @@ const PRIORITY_STYLES = {
   Low:    'border-emerald-200 bg-emerald-50 text-emerald-600',
 };
 
+const PRIORITY_FALLBACK = 'border-brand-lilac bg-white text-brand-ink/60';
+
 /* ================================================================
    HELPERS
    ================================================================ */
@@ -68,10 +69,11 @@ const ymd = (d) =>
 
 const todayYMD = () => ymd(new Date());
 
-/* Human "x min ago" for missed calls */
+/* Human "x min ago" */
 const timeAgo = (iso) => {
   if (!iso) return '';
   const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
   const diff = Date.now() - then;
   const min = Math.floor(diff / 60000);
   if (min < 1) return 'Just now';
@@ -82,34 +84,34 @@ const timeAgo = (iso) => {
   return `${d}d ${h % 24}h ago`;
 };
 
-/* Filter calls within date range */
+/* Filter calls within date range (timezone-safe) */
 const inDateRange = (call, range) => {
   if (!call?.date || range === 'all') return true;
   const callDay = ymd(new Date(call.date));
   const today = todayYMD();
-  const yesterday = ymd(new Date(Date.now() - 86400000));
 
   if (range === 'today') return callDay === today;
-  if (range === 'yesterday') return callDay === yesterday;
-
+  if (range === 'yesterday') {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return callDay === ymd(d);
+  }
   if (range === 'week') {
-    const weekAgo = ymd(new Date(Date.now() - 7 * 86400000));
-    return callDay >= weekAgo;
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return callDay >= ymd(d);
   }
   if (range === 'month') {
-    const monthStart = ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-    return callDay >= monthStart;
+    const d = new Date();
+    return callDay >= ymd(new Date(d.getFullYear(), d.getMonth(), 1));
   }
   return true;
 };
 
+const priorityRank = (p) => ({ High: 0, Medium: 1, Low: 2 }[p] ?? 3);
+
 /* ================================================================
    DEMO CALLBACKS (for the queue hero card)
-   Callbacks come from two sources:
-   1. Missed calls that need a follow-up
-   2. Explicit "Call Back" dispositions
-   We keep a small synthetic seed here so the page has meaningful
-   content even with empty mockData.
    ================================================================ */
 const buildDemoCallbacks = (agentName, websiteId) => {
   const now = Date.now();
@@ -143,7 +145,7 @@ const buildDemoCallbacks = (agentName, websiteId) => {
       mobile: '9876543212',
       reason: 'Wants brochure',
       priority: 'High',
-      dueAt: new Date(now - 5 * 60000).toISOString(),   // overdue
+      dueAt: new Date(now - 5 * 60000).toISOString(),
       leadStage: 'Hot',
       source: 'Referral',
     },
@@ -165,7 +167,6 @@ export default function Calls() {
   const [inCall, setInCall] = useState(null);
   const [showWrapUp, setShowWrapUp] = useState(null);
   const [showFollowUp, setShowFollowUp] = useState(null);
-  const [showQuickDialer, setShowQuickDialer] = useState(false);
   const [toast, setToast] = useState(null);
   const [callHistory, setCallHistory] = useState([]);
 
@@ -177,24 +178,33 @@ export default function Calls() {
   const [callQueue, setCallQueue] = useState(null);
   const [queueIndex, setQueueIndex] = useState(0);
 
+  const toastTimer = useRef(null);
+  const queueTimer = useRef(null);
+
   useEffect(() => {
     setCallbacks(buildDemoCallbacks(user?.name || 'Agent', activeWebsiteId));
   }, [user?.name, activeWebsiteId]);
 
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      if (queueTimer.current) clearTimeout(queueTimer.current);
+    };
+  }, []);
+
   const showToast = (msg, type = 'success') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 2600);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
   };
 
   /* ---------- SCOPED CALLS ---------- */
   const agentCalls = useMemo(() => {
     const list = (CALLS || []).filter(
-      (c) =>
-        (c.projectId ?? c.websiteId) === activeWebsiteId &&
-        (c.agent === user?.name || c.agentName === user?.name || !c.agent)
+      (c) => (c.projectId ?? c.websiteId) === activeWebsiteId
     );
     return [...callHistory, ...list];
-  }, [activeWebsiteId, user?.name, callHistory]);
+  }, [activeWebsiteId, callHistory]);
 
   /* ---------- FILTERED ---------- */
   const filteredCalls = useMemo(() => {
@@ -244,8 +254,8 @@ export default function Calls() {
   /* ---------- CALLBACKS ---------- */
   const visibleCallbacks = useMemo(() => {
     return [...callbacks].sort((a, b) => {
-      const pa = { High: 0, Medium: 1, Low: 2 }[a.priority];
-      const pb = { High: 0, Medium: 1, Low: 2 }[b.priority];
+      const pa = priorityRank(a.priority);
+      const pb = priorityRank(b.priority);
       if (pa !== pb) return pa - pb;
       return new Date(a.dueAt) - new Date(b.dueAt);
     });
@@ -253,9 +263,14 @@ export default function Calls() {
 
   /* ---------- HANDLERS ---------- */
   const handleStartCall = (target) => {
+    const mobile = target.mobile || target.phone;
+    if (!mobile) {
+      showToast('No phone number available', 'error');
+      return;
+    }
     setInCall({
       name: target.name || target.customer || 'Unknown',
-      mobile: target.mobile || target.phone,
+      mobile,
       leadId: target.id || target.leadId,
       direction: target.direction || 'outgoing',
       context: {
@@ -272,6 +287,7 @@ export default function Calls() {
   };
 
   const handleCallEnd = (payload) => {
+    if (!inCall) return;
     const entry = {
       id: `call-${Date.now()}`,
       customer: inCall.name,
@@ -279,11 +295,13 @@ export default function Calls() {
       leadId: inCall.leadId,
       type: payload.direction === 'incoming' ? 'inbound' : 'outbound',
       status:
-        payload.disposition === 'No Answer' || payload.disposition === 'Missed'
+        payload.disposition === 'No Answer' ||
+        payload.disposition === 'Missed' ||
+        payload.disposition === 'Busy'
           ? 'missed'
           : 'connected',
       duration: payload.duration,
-      outcome: payload.disposition,
+      outcome: payload.disposition || 'Connected',
       notes: payload.notes,
       date: new Date().toISOString(),
       recording: payload.recording,
@@ -352,7 +370,9 @@ export default function Calls() {
         setQueueIndex(nextIndex);
         const next = callQueue[nextIndex];
         showToast(`Next · ${next.customer}`);
-        setTimeout(() => handleStartCall({ ...next, direction: 'outgoing' }), 300);
+        queueTimer.current = setTimeout(() => {
+          handleStartCall({ ...next, direction: 'outgoing' });
+        }, 300);
       } else {
         setCallQueue(null);
         setQueueIndex(0);
@@ -402,14 +422,24 @@ export default function Calls() {
     showToast(`Snoozed ${cb.customer} by ${minutes} min`);
   };
 
-  /* ---------- QUICK DIALER ---------- */
-  const handleQuickDial = (number) => {
-    setShowQuickDialer(false);
-    handleStartCall({
-      name: 'Unknown',
-      mobile: number,
-      direction: 'outgoing',
-    });
+  const handleSkipQueue = () => {
+    if (!callQueue) return;
+    const nextIndex = queueIndex + 1;
+    if (nextIndex < callQueue.length) {
+      setQueueIndex(nextIndex);
+      handleStartCall({ ...callQueue[nextIndex], direction: 'outgoing' });
+    } else {
+      setCallQueue(null);
+      setQueueIndex(0);
+      setInCall(null);
+      showToast('Callback queue complete 🎉');
+    }
+  };
+
+  const handleCloseCall = () => {
+    setInCall(null);
+    setCallQueue(null);
+    setQueueIndex(0);
   };
 
   /* ================================================================
@@ -429,13 +459,15 @@ export default function Calls() {
               Your calling workspace — callbacks, calls, and conversations.
             </p>
           </div>
+        </div>
 
-          <button
-            onClick={() => setShowQuickDialer(true)}
-            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-4 py-2 text-xs font-semibold text-white shadow-card hover:brightness-110"
-          >
-            <Hash size={14} /> Quick Dial
-          </button>
+        {/* ================= KPI STRIP ================= */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <AnimatedStatCard label="Total Calls"    value={summary.total}        sub="In range"      icon={PhoneCall}    color="purple"  delay={0} />
+          <AnimatedStatCard label="Connected"      value={summary.connected}    sub="Successful"    icon={CheckCircle2} color="emerald" delay={40} />
+          <AnimatedStatCard label="Missed"         value={summary.missed}       sub="Need callback" icon={PhoneMissed}  color="rose"    delay={80} />
+          <AnimatedStatCard label="Recordings"     value={summary.recordings}   sub="Available"     icon={FileAudio}    color="amber"   delay={120} />
+          <AnimatedStatCard label="Follow-ups Due" value={summary.followUpsDue} sub="Scheduled"     icon={Calendar}     color="purple"  delay={160} />
         </div>
 
         {/* ================= CALLBACK QUEUE (hero) ================= */}
@@ -446,15 +478,6 @@ export default function Calls() {
           onComplete={handleCallbackComplete}
           onSnooze={handleCallbackSnooze}
         />
-
-        {/* ================= KPI STRIP ================= */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <AnimatedStatCard label="Total Calls"      value={summary.total}      sub="In range"       icon={PhoneCall}     color="purple"  delay={0} />
-          <AnimatedStatCard label="Connected"        value={summary.connected}  sub="Successful"     icon={CheckCircle2}  color="emerald" delay={40} />
-          <AnimatedStatCard label="Missed"           value={summary.missed}     sub="Need callback"  icon={PhoneMissed}   color="rose"    delay={80} />
-          <AnimatedStatCard label="Recordings"       value={summary.recordings} sub="Available"      icon={FileAudio}     color="amber"   delay={120} />
-          <AnimatedStatCard label="Follow-ups Due"   value={summary.followUpsDue} sub="Scheduled"    icon={Calendar}      color="purple"  delay={160} />
-        </div>
 
         {/* ================= TABS ================= */}
         <div className="card !p-2.5">
@@ -472,7 +495,7 @@ export default function Calls() {
                   onClick={() => setActiveTab(t.key)}
                   className={`group inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all duration-200 ${
                     active
-                      ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)] scale-[1.02]'
+                      ? 'scale-[1.02] bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)]'
                       : 'text-brand-ink/60 hover:bg-brand-lilac/50 hover:text-brand-magenta'
                   }`}
                 >
@@ -485,9 +508,11 @@ export default function Calls() {
                     </span>
                   )}
                   {count !== null && (
-                    <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                      active ? 'bg-white/25 text-white' : 'bg-brand-lilac/70 text-brand-purple'
-                    }`}>
+                    <span
+                      className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                        active ? 'bg-white/25 text-white' : 'bg-brand-lilac/70 text-brand-purple'
+                      }`}
+                    >
                       {count}
                     </span>
                   )}
@@ -511,6 +536,7 @@ export default function Calls() {
               <button
                 onClick={() => setSearchQuery('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-brand-lilac"
+                aria-label="Clear search"
               >
                 <X size={14} className="text-brand-ink/50" />
               </button>
@@ -570,9 +596,7 @@ export default function Calls() {
                 missedMode={activeTab === 'missed'}
                 onView={() => setSelectedCall(call)}
                 onCall={() => handleStartCall({ ...call, direction: 'outgoing' })}
-                onSchedule={() => {
-                  setShowFollowUp(call);
-                }}
+                onSchedule={() => setShowFollowUp(call)}
               />
             ))}
           </div>
@@ -586,19 +610,8 @@ export default function Calls() {
             queueIndex={queueIndex}
             queueSize={callQueue?.length || 0}
             nextTarget={callQueue?.[queueIndex + 1]}
-            onSkip={() => {
-              if (!callQueue) return;
-              const nextIndex = queueIndex + 1;
-              if (nextIndex < callQueue.length) {
-                setQueueIndex(nextIndex);
-                handleStartCall({ ...callQueue[nextIndex], direction: 'outgoing' });
-              } else {
-                setCallQueue(null);
-                setQueueIndex(0);
-                setInCall(null);
-              }
-            }}
-            onClose={() => { setInCall(null); setCallQueue(null); setQueueIndex(0); }}
+            onSkip={handleSkipQueue}
+            onClose={handleCloseCall}
             onEnd={handleCallEnd}
           />
         )}
@@ -616,7 +629,10 @@ export default function Calls() {
               });
               setSelectedCall(null);
             }}
-            onSchedule={() => { setShowFollowUp(selectedCall); setSelectedCall(null); }}
+            onSchedule={() => {
+              setShowFollowUp(selectedCall);
+              setSelectedCall(null);
+            }}
           />
         )}
 
@@ -637,18 +653,6 @@ export default function Calls() {
           />
         )}
 
-        {showQuickDialer && (
-          <QuickDialerModal
-            onClose={() => setShowQuickDialer(false)}
-            onDial={handleQuickDial}
-            recentNumbers={[
-              { name: 'Rahul Kumar', mobile: '9876543210' },
-              { name: 'Priya Sharma', mobile: '9876543211' },
-              { name: 'Arun Mehta', mobile: '9876543212' },
-            ]}
-          />
-        )}
-
         {toast && <Toast message={toast.msg} type={toast.type} />}
       </div>
     </div>
@@ -659,6 +663,14 @@ export default function Calls() {
    CALLBACK QUEUE CARD
    ================================================================ */
 function CallbackQueueCard({ callbacks, onStartQueue, onCall, onComplete, onSnooze }) {
+  const [, setTick] = useState(0);
+
+  /* Re-render every minute so "due in Xm" stays fresh */
+  useEffect(() => {
+    const i = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(i);
+  }, []);
+
   const now = Date.now();
   const overdueCount = callbacks.filter((c) => new Date(c.dueAt).getTime() < now).length;
   const highCount = callbacks.filter((c) => c.priority === 'High').length;
@@ -683,11 +695,11 @@ function CallbackQueueCard({ callbacks, onStartQueue, onCall, onComplete, onSnoo
             </div>
 
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-              <FocusStat value={callbacks.length} label="Callbacks"  tone="purple" icon={PhoneCall} />
+              <FocusStat value={callbacks.length} label="Callbacks"     tone="purple" icon={PhoneCall} />
               <span className="hidden h-8 w-px bg-brand-lilac sm:block" />
-              <FocusStat value={overdueCount}    label="Overdue"    tone="rose"   icon={AlertTriangle} />
+              <FocusStat value={overdueCount}     label="Overdue"       tone="rose"   icon={AlertTriangle} />
               <span className="hidden h-8 w-px bg-brand-lilac sm:block" />
-              <FocusStat value={highCount}       label="High Priority" tone="amber" icon={Flame} />
+              <FocusStat value={highCount}        label="High Priority" tone="amber"  icon={Flame} />
             </div>
           </div>
 
@@ -742,9 +754,11 @@ function CallbackRow({ callback, onCall, onComplete, onSnooze }) {
     : `Due in ${mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`}`;
 
   return (
-    <div className={`flex flex-wrap items-center gap-3 rounded-xl border-2 bg-white px-3 py-2.5 transition-all hover:shadow-sm ${
-      isOverdue ? 'border-rose-200' : 'border-brand-lilac/70'
-    }`}>
+    <div
+      className={`flex flex-wrap items-center gap-3 rounded-xl border-2 bg-white px-3 py-2.5 transition-all hover:shadow-sm ${
+        isOverdue ? 'border-rose-200' : 'border-brand-lilac/70'
+      }`}
+    >
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-magenta to-brand-purple text-[10px] font-bold text-white shadow-sm">
         {callback.customer.split(' ').map((n) => n[0]).slice(0, 2).join('')}
       </span>
@@ -752,7 +766,11 @@ function CallbackRow({ callback, onCall, onComplete, onSnooze }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-sm font-semibold text-brand-ink">{callback.customer}</p>
-          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase ${PRIORITY_STYLES[callback.priority]}`}>
+          <span
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase ${
+              PRIORITY_STYLES[callback.priority] || PRIORITY_FALLBACK
+            }`}
+          >
             {callback.priority}
           </span>
           {callback.leadStage && callback.leadStage !== '—' && (
@@ -766,9 +784,13 @@ function CallbackRow({ callback, onCall, onComplete, onSnooze }) {
         </p>
       </div>
 
-      <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-        isOverdue ? 'bg-rose-50 text-rose-600 ring-1 ring-rose-200' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-      }`}>
+      <span
+        className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+          isOverdue
+            ? 'bg-rose-50 text-rose-600 ring-1 ring-rose-200'
+            : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+        }`}
+      >
         {isOverdue ? <AlertTriangle size={9} /> : <Clock size={9} />}
         {dueLabel}
       </span>
@@ -824,7 +846,9 @@ function FocusStat({ value, label, tone = 'purple', icon: Icon }) {
    ================================================================ */
 function CallRow({ call, missedMode, onView, onCall, onSchedule }) {
   const type = call.type === 'inbound' || call.type === 'incoming' ? 'inbound' : 'outbound';
-  const status = call.status || (call.outcome === 'No Answer' ? 'missed' : 'connected');
+  const status = call.status || (
+    ['No Answer', 'Busy', 'Missed'].includes(call.outcome) ? 'missed' : 'connected'
+  );
   const customer = call.customer || call.leadName || 'Unknown';
   const mobile = call.mobile || call.phone || '—';
   const missedAgo = status === 'missed' ? timeAgo(call.date) : null;
@@ -875,7 +899,11 @@ function CallRow({ call, missedMode, onView, onCall, onSchedule }) {
         <p className="font-semibold text-brand-ink/70">{call.outcome || '—'}</p>
       </div>
 
-      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${STATUS_STYLES[status] || STATUS_STYLES.failed}`}>
+      <span
+        className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${
+          STATUS_STYLES[status] || STATUS_STYLES.failed
+        }`}
+      >
         {status}
       </span>
 
@@ -915,7 +943,7 @@ function CallRow({ call, missedMode, onView, onCall, onSchedule }) {
 }
 
 /* ================================================================
-   IN-CALL MODAL — now with Lead Context panel
+   IN-CALL MODAL
    ================================================================ */
 function CallModal({ target, inQueue, queueIndex, queueSize, nextTarget, onSkip, onClose, onEnd }) {
   const [callState, setCallState] = useState('ringing');
@@ -926,11 +954,16 @@ function CallModal({ target, inQueue, queueIndex, queueSize, nextTarget, onSkip,
   const [recording, setRecording] = useState(true);
   const [transferOpen, setTransferOpen] = useState(false);
   const [notes, setNotes] = useState('');
-  const [disposition, setDisposition] = useState('Connected');
 
   const name = target.name || target.customer || 'Unknown';
   const phone = target.mobile || target.phone || '';
   const ctx = target.context || {};
+
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   useEffect(() => {
     if (callState !== 'ringing') return;
@@ -953,7 +986,7 @@ function CallModal({ target, inQueue, queueIndex, queueSize, nextTarget, onSkip,
   const endCall = () => {
     onEnd({
       duration: formatTime(seconds),
-      disposition,
+      disposition: 'Connected',
       notes,
       recording,
       direction: target.direction || 'outgoing',
@@ -961,19 +994,29 @@ function CallModal({ target, inQueue, queueIndex, queueSize, nextTarget, onSkip,
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-panel">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="grid grid-cols-1 md:grid-cols-5">
           {/* ============ LEFT: Call ============ */}
           <div className="md:col-span-3">
-            <div className={`relative px-6 pb-6 pt-6 text-center text-white ${
-              callState === 'connected'
-                ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
-                : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
-            }`}>
+            <div
+              className={`relative px-6 pb-6 pt-6 text-center text-white ${
+                callState === 'connected'
+                  ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
+                  : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
+              }`}
+            >
               <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider">
                 <span className="truncate text-white/80">Outgoing call</span>
-                {inQueue && (
+                {inQueue && queueSize > 0 && (
                   <span className="rounded-full bg-white/25 px-2 py-0.5">
                     {String(queueIndex + 1).padStart(2, '0')} / {String(queueSize).padStart(2, '0')}
                   </span>
@@ -983,6 +1026,7 @@ function CallModal({ target, inQueue, queueIndex, queueSize, nextTarget, onSkip,
               <button
                 onClick={onClose}
                 className="absolute right-4 top-4 rounded-lg p-1.5 text-white/70 hover:bg-white/20"
+                aria-label="Close"
               >
                 <X size={18} />
               </button>
@@ -1030,7 +1074,6 @@ function CallModal({ target, inQueue, queueIndex, queueSize, nextTarget, onSkip,
                         key={t}
                         onClick={() => {
                           setTransferOpen(false);
-                          setDisposition('Other');
                           setNotes((n) => (n ? `${n}\n` : '') + `Transferred to ${t}`);
                         }}
                         className="rounded-lg border border-brand-lilac bg-white py-2 text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40"
@@ -1090,7 +1133,12 @@ function CallModal({ target, inQueue, queueIndex, queueSize, nextTarget, onSkip,
                     {nextTarget.customer.split(' ').map((n) => n[0]).slice(0, 2).join('')}
                   </span>
                   <span className="truncate font-semibold text-brand-ink">{nextTarget.customer}</span>
-                  <ChevronRight size={14} className="ml-auto text-brand-ink/30" />
+                  <button
+                    onClick={onSkip}
+                    className="ml-auto rounded-md border border-brand-lilac bg-white px-2 py-0.5 text-[10px] font-semibold text-brand-ink/60 hover:border-brand-magenta/40 hover:text-brand-magenta"
+                  >
+                    Skip
+                  </button>
                 </div>
               )}
             </div>
@@ -1103,13 +1151,13 @@ function CallModal({ target, inQueue, queueIndex, queueSize, nextTarget, onSkip,
             </p>
 
             <div className="space-y-2.5">
-              <ContextRow icon={Flame}        label="Status"       value={ctx.stage || '—'} />
-              <ContextRow icon={MegaphoneIcon} label="Source"      value={ctx.source || '—'} />
-              <ContextRow icon={Building2}    label="Interest"     value={ctx.interest || '—'} />
-              <ContextRow icon={IndianRupee}  label="Budget"       value={ctx.budget || '—'} />
-              <ContextRow icon={MapPin}       label="Location"     value={ctx.location || '—'} />
-              <ContextRow icon={Calendar}     label="Last Contact" value={ctx.lastContact || '—'} />
-              <ContextRow icon={Layers}       label="Campaign"     value={ctx.campaign || '—'} />
+              <ContextRow icon={Flame}     label="Status"       value={ctx.stage || '—'} />
+              <ContextRow icon={Megaphone} label="Source"       value={ctx.source || '—'} />
+              <ContextRow icon={Building2} label="Interest"     value={ctx.interest || '—'} />
+              <ContextRow icon={IndianRupee} label="Budget"     value={ctx.budget || '—'} />
+              <ContextRow icon={MapPin}    label="Location"     value={ctx.location || '—'} />
+              <ContextRow icon={Calendar}  label="Last Contact" value={ctx.lastContact || '—'} />
+              <ContextRow icon={Layers}    label="Campaign"     value={ctx.campaign || '—'} />
             </div>
 
             <div className="mt-5 rounded-xl border border-brand-lilac bg-white p-3">
@@ -1134,14 +1182,6 @@ function CallModal({ target, inQueue, queueIndex, queueSize, nextTarget, onSkip,
     </div>
   );
 }
-
-/* inline helper icons so we don't import more lucide names */
-const MegaphoneIcon = ({ size = 14 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m3 11 18-5v12L3 14v-3z" />
-    <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
-  </svg>
-);
 
 function ContextRow({ icon: Icon, label, value }) {
   return (
@@ -1174,7 +1214,7 @@ function CallControl({ icon: Icon, label, active, onClick }) {
 }
 
 /* ================================================================
-   CALL DETAIL DRAWER — with timeline
+   CALL DETAIL DRAWER
    ================================================================ */
 function CallDetailDrawer({ call, onClose, onCall, onSchedule }) {
   const type = call.type === 'inbound' || call.type === 'incoming' ? 'inbound' : 'outbound';
@@ -1182,7 +1222,13 @@ function CallDetailDrawer({ call, onClose, onCall, onSchedule }) {
   const customer = call.customer || call.leadName || 'Unknown';
   const mobile = call.mobile || call.phone || '—';
 
-  // Timeline merged from previous calls + this one
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Timeline placeholder — would be replaced with real sibling calls in production
   const timeline = [
     {
       id: 'now',
@@ -1193,23 +1239,32 @@ function CallDetailDrawer({ call, onClose, onCall, onSchedule }) {
       tone: status === 'missed' ? 'rose' : 'emerald',
       current: true,
     },
-    { id: 't1', type: 'outbound', when: 'Yesterday · 3:45 PM', duration: '0:52', outcome: 'Follow-up callback', tone: 'violet' },
-    { id: 't2', type: 'inbound',  when: 'Sep 28 · 11:20 AM',  duration: '2:14', outcome: 'Requested brochure',  tone: 'emerald' },
-    { id: 't3', type: 'outbound', when: 'Sep 26 · 5:10 PM',   duration: '1:08', outcome: 'No Answer',           tone: 'slate' },
+    { id: 't1', type: 'outbound', when: 'Yesterday · 3:45 PM', duration: '0:52',  outcome: 'Follow-up callback',   tone: 'violet' },
+    { id: 't2', type: 'inbound',  when: 'Sep 28 · 11:20 AM',   duration: '2:14',  outcome: 'Requested brochure',   tone: 'emerald' },
+    { id: 't3', type: 'outbound', when: 'Sep 26 · 5:10 PM',    duration: '1:08',  outcome: 'No Answer',            tone: 'slate' },
   ];
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
-      <div className="h-full w-full max-w-md overflow-y-auto bg-white shadow-panel">
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
+      <div
+        className="h-full w-full max-w-md overflow-y-auto bg-white shadow-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-brand-lilac bg-white p-5">
           <div>
             <h3 className="font-display text-lg font-semibold text-brand-ink">Call Details</h3>
             <p className="text-xs text-brand-ink/50">Full call record</p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac"
+            aria-label="Close"
+          >
             <X size={18} />
           </button>
         </div>
@@ -1223,7 +1278,11 @@ function CallDetailDrawer({ call, onClose, onCall, onSchedule }) {
               <p className="font-semibold text-brand-ink">{customer}</p>
               <p className="text-sm text-brand-ink/50">{mobile}</p>
             </div>
-            <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${STATUS_STYLES[status] || STATUS_STYLES.failed}`}>
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${
+                STATUS_STYLES[status] || STATUS_STYLES.failed
+              }`}
+            >
               {status}
             </span>
           </div>
@@ -1258,6 +1317,7 @@ function CallDetailDrawer({ call, onClose, onCall, onSchedule }) {
                 <button
                   onClick={() => setIsPlaying((p) => !p)}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card"
+                  aria-label={isPlaying ? 'Pause' : 'Play'}
                 >
                   {isPlaying ? <Pause size={14} /> : <Play size={14} fill="currentColor" />}
                 </button>
@@ -1274,7 +1334,9 @@ function CallDetailDrawer({ call, onClose, onCall, onSchedule }) {
                       key={s}
                       onClick={() => setSpeed(s)}
                       className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
-                        speed === s ? 'bg-brand-magenta text-white' : 'bg-white text-amber-700 hover:bg-amber-100'
+                        speed === s
+                          ? 'bg-brand-magenta text-white'
+                          : 'bg-white text-amber-700 hover:bg-amber-100'
                       }`}
                     >
                       {s}x
@@ -1311,21 +1373,31 @@ function CallDetailDrawer({ call, onClose, onCall, onSchedule }) {
               </p>
             </div>
             <div className="relative space-y-3">
-              <span className="pointer-events-none absolute left-[15px] top-4 bottom-4 w-px bg-brand-lilac" />
+              <span className="pointer-events-none absolute bottom-4 left-[15px] top-4 w-px bg-brand-lilac" />
               {timeline.map((t) => (
                 <div key={t.id} className="relative flex items-start gap-3">
-                  <span className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-white ${
-                    t.tone === 'emerald' ? 'bg-emerald-100 text-emerald-600' :
-                    t.tone === 'rose'    ? 'bg-rose-100 text-rose-500' :
-                    t.tone === 'violet'  ? 'bg-violet-100 text-brand-purple' :
-                                           'bg-slate-100 text-slate-500'
-                  }`}>
+                  <span
+                    className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-white ${
+                      t.tone === 'emerald'
+                        ? 'bg-emerald-100 text-emerald-600'
+                        : t.tone === 'rose'
+                        ? 'bg-rose-100 text-rose-500'
+                        : t.tone === 'violet'
+                        ? 'bg-violet-100 text-brand-purple'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
                     {t.type === 'inbound' ? <PhoneIncoming size={12} /> : <PhoneOutgoing size={12} />}
                   </span>
                   <div className="min-w-0 flex-1 rounded-xl border border-brand-lilac/60 bg-white p-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold capitalize text-brand-ink">
-                        {t.type} {t.current && <span className="ml-1 rounded-full bg-brand-magenta/10 px-1.5 py-0.5 text-[9px] font-bold text-brand-magenta">Current</span>}
+                        {t.type}
+                        {t.current && (
+                          <span className="ml-1 rounded-full bg-brand-magenta/10 px-1.5 py-0.5 text-[9px] font-bold text-brand-magenta">
+                            Current
+                          </span>
+                        )}
                       </p>
                       <span className="font-mono text-[10px] text-brand-ink/50">{t.duration}</span>
                     </div>
@@ -1349,8 +1421,8 @@ function CallWrapUpModal({ call, inQueue, onClose, onSave }) {
   const [disposition, setDisposition] = useState(call.outcome || 'Connected');
   const [notes, setNotes] = useState(call.notes || '');
   const [tags, setTags] = useState([]);
-  const [leadStage, setLeadStage] = useState(call.leadStage || 'Warm');
-  const [interestType, setInterestType] = useState('Warm');
+  const [leadStage] = useState(call.leadStage || 'Warm');
+  const [interestType, setInterestType] = useState(call.interestType || 'Warm');
   const [notInterestedReason, setNotInterestedReason] = useState('');
   const [scheduleFollowUp, setScheduleFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState(() => {
@@ -1361,16 +1433,22 @@ function CallWrapUpModal({ call, inQueue, onClose, onSave }) {
   const [followUpTime, setFollowUpTime] = useState('10:00');
   const [followUpNotes, setFollowUpNotes] = useState('');
 
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const isInterested = disposition === 'Interested' || disposition === 'Converted';
   const isNotInterested = disposition === 'Not Interested';
   const isNoAnswer = disposition === 'No Answer' || disposition === 'Busy';
 
   const QUICK_TAGS = [
-    { key: 'hot',     label: '🔥 Hot Lead' },
-    { key: 'price',   label: '💰 Price Concern' },
-    { key: 'brochure',label: '📄 Requested Brochure' },
-    { key: 'callback',label: '📅 Callback' },
-    { key: 'notint',  label: '❌ Not Interested' },
+    { key: 'hot',      label: '🔥 Hot Lead' },
+    { key: 'price',    label: '💰 Price Concern' },
+    { key: 'brochure', label: '📄 Requested Brochure' },
+    { key: 'callback', label: '📅 Callback' },
+    { key: 'notint',   label: '❌ Not Interested' },
   ];
 
   const toggleTag = (k) =>
@@ -1391,8 +1469,16 @@ function CallWrapUpModal({ call, inQueue, onClose, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-panel">
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
@@ -1405,7 +1491,11 @@ function CallWrapUpModal({ call, inQueue, onClose, onSave }) {
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac"
+            aria-label="Close"
+          >
             <X size={18} />
           </button>
         </div>
@@ -1432,9 +1522,7 @@ function CallWrapUpModal({ call, inQueue, onClose, onSave }) {
 
           {isInterested && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <p className="mb-2 text-[11px] font-bold uppercase text-emerald-700">
-                Interest details
-              </p>
+              <p className="mb-2 text-[11px] font-bold uppercase text-emerald-700">Interest details</p>
               <div className="grid grid-cols-3 gap-2">
                 {INTEREST_TYPES.map((t) => (
                   <button
@@ -1478,15 +1566,14 @@ function CallWrapUpModal({ call, inQueue, onClose, onSave }) {
 
           {isNoAnswer && (
             <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
-              <p className="mb-2 text-[11px] font-bold uppercase text-brand-ink/60">
-                Quick retry
-              </p>
+              <p className="mb-2 text-[11px] font-bold uppercase text-brand-ink/60">Quick retry</p>
               <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => {
+                    const d = new Date(Date.now() + 15 * 60000);
                     setScheduleFollowUp(true);
-                    setFollowUpTime(new Date(Date.now() + 15 * 60000).toTimeString().slice(0, 5));
-                    setFollowUpDate(ymd(new Date()));
+                    setFollowUpTime(d.toTimeString().slice(0, 5));
+                    setFollowUpDate(ymd(d));
                   }}
                   className="rounded-lg border border-brand-lilac bg-white px-2 py-1.5 text-[11px] font-semibold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
                 >
@@ -1494,9 +1581,10 @@ function CallWrapUpModal({ call, inQueue, onClose, onSave }) {
                 </button>
                 <button
                   onClick={() => {
+                    const d = new Date(Date.now() + 60 * 60000);
                     setScheduleFollowUp(true);
-                    setFollowUpTime(new Date(Date.now() + 60 * 60000).toTimeString().slice(0, 5));
-                    setFollowUpDate(ymd(new Date()));
+                    setFollowUpTime(d.toTimeString().slice(0, 5));
+                    setFollowUpDate(ymd(d));
                   }}
                   className="rounded-lg border border-brand-lilac bg-white px-2 py-1.5 text-[11px] font-semibold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
                 >
@@ -1504,9 +1592,9 @@ function CallWrapUpModal({ call, inQueue, onClose, onSave }) {
                 </button>
                 <button
                   onClick={() => {
-                    setScheduleFollowUp(true);
                     const tm = new Date();
                     tm.setDate(tm.getDate() + 1);
+                    setScheduleFollowUp(true);
                     setFollowUpDate(ymd(tm));
                     setFollowUpTime('10:00');
                   }}
@@ -1561,7 +1649,7 @@ function CallWrapUpModal({ call, inQueue, onClose, onSave }) {
           </label>
 
           {scheduleFollowUp && (
-            <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3 space-y-2">
+            <div className="space-y-2 rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="date"
@@ -1607,7 +1695,7 @@ function CallWrapUpModal({ call, inQueue, onClose, onSave }) {
 }
 
 /* ================================================================
-   FOLLOW-UP MODAL (light, from row/missed)
+   FOLLOW-UP MODAL
    ================================================================ */
 function FollowUpModal({ call, onClose, onSave }) {
   const today = ymd(new Date());
@@ -1615,9 +1703,23 @@ function FollowUpModal({ call, onClose, onSave }) {
   const [time, setTime] = useState('10:00');
   const [notes, setNotes] = useState('');
 
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-panel">
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white">
@@ -1625,10 +1727,16 @@ function FollowUpModal({ call, onClose, onSave }) {
             </div>
             <div>
               <h3 className="font-display text-lg font-semibold text-brand-ink">Schedule Follow-up</h3>
-              <p className="text-xs text-brand-ink/50">{call.customer || call.leadName || 'Customer'}</p>
+              <p className="text-xs text-brand-ink/50">
+                {call.customer || call.leadName || 'Customer'}
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac"
+            aria-label="Close"
+          >
             <X size={18} />
           </button>
         </div>
@@ -1687,108 +1795,6 @@ function FollowUpModal({ call, onClose, onSave }) {
 }
 
 /* ================================================================
-   QUICK DIALER MODAL
-   ================================================================ */
-function QuickDialerModal({ onClose, onDial, recentNumbers = [] }) {
-  const [number, setNumber] = useState('');
-
-  const pressKey = (k) => setNumber((n) => (n + k).slice(0, 15));
-  const backspace = () => setNumber((n) => n.slice(0, -1));
-  const clear = () => setNumber('');
-
-  const keypad = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['*', '0', '#'],
-  ];
-
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-panel">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white">
-              <Hash size={18} />
-            </div>
-            <div>
-              <h3 className="font-display text-lg font-semibold text-brand-ink">Quick Dialer</h3>
-              <p className="text-xs text-brand-ink/50">Enter a number to call</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="mb-4 rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
-          <input
-            value={number}
-            onChange={(e) => setNumber(e.target.value.replace(/[^\d*#+]/g, ''))}
-            placeholder="+91 98765 43210"
-            className="w-full bg-transparent text-center font-display text-lg font-bold tracking-wider text-brand-ink outline-none placeholder:font-normal placeholder:text-brand-ink/30"
-          />
-        </div>
-
-        <div className="grid grid-cols-3 gap-2">
-          {keypad.flat().map((k) => (
-            <button
-              key={k}
-              onClick={() => pressKey(k)}
-              className="flex h-12 items-center justify-center rounded-xl border border-brand-lilac bg-white text-base font-bold text-brand-ink hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta"
-            >
-              {k}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          <button
-            onClick={backspace}
-            className="flex h-10 items-center justify-center rounded-xl border border-brand-lilac bg-white text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40"
-          >
-            <Delete size={14} />
-          </button>
-          <button
-            onClick={() => onDial(number)}
-            disabled={number.replace(/\D/g, '').length < 6}
-            className="col-span-1 flex h-10 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-xs font-bold text-white shadow-card hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Phone size={13} /> Call
-          </button>
-          <button
-            onClick={clear}
-            className="flex h-10 items-center justify-center rounded-xl border border-brand-lilac bg-white text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40"
-          >
-            Clear
-          </button>
-        </div>
-
-        {recentNumbers.length > 0 && (
-          <div className="mt-4">
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-ink/40">
-              Recent
-            </p>
-            <div className="space-y-1">
-              {recentNumbers.slice(0, 3).map((r, i) => (
-                <button
-                  key={i}
-                  onClick={() => setNumber(r.mobile)}
-                  className="flex w-full items-center justify-between rounded-lg border border-brand-lilac/60 bg-white px-3 py-2 text-left text-xs hover:border-brand-magenta/40 hover:bg-brand-lilac/30"
-                >
-                  <span className="truncate font-semibold text-brand-ink">{r.name}</span>
-                  <span className="shrink-0 font-mono text-brand-ink/50">{r.mobile}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================
    EMPTY STATE
    ================================================================ */
 function EmptyState({ tab }) {
@@ -1824,6 +1830,13 @@ function DropdownFilter({ label, icon: Icon, value, options, onChange }) {
   );
   const current = normalized.find((o) => o.value === value);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
   return (
     <div className="relative">
       <button
@@ -1832,7 +1845,9 @@ function DropdownFilter({ label, icon: Icon, value, options, onChange }) {
       >
         {Icon && <Icon size={14} className="text-brand-magenta" />}
         <span className="text-brand-ink/60">{label}:</span>
-        <span className="font-semibold capitalize text-brand-magenta">{current?.label ?? value}</span>
+        <span className="font-semibold capitalize text-brand-magenta">
+          {current?.label ?? value}
+        </span>
         <ChevronDown size={14} className="text-brand-ink/40" />
       </button>
       {open && (
@@ -1842,7 +1857,10 @@ function DropdownFilter({ label, icon: Icon, value, options, onChange }) {
             {normalized.map((o) => (
               <button
                 key={o.value}
-                onClick={() => { onChange(o.value); setOpen(false); }}
+                onClick={() => {
+                  onChange(o.value);
+                  setOpen(false);
+                }}
                 className={`w-full rounded-lg px-3 py-2 text-left text-sm ${
                   value === o.value
                     ? 'bg-brand-magenta/10 font-semibold text-brand-magenta'
@@ -1937,19 +1955,31 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp
       style={{ animationDelay: `${delay}ms` }}
       className={`group relative overflow-hidden rounded-2xl border-2 bg-white p-4 shadow-sm transition-all duration-500 hover:-translate-y-1 animate-fade-slide-in ${t.border} ${t.shadow}`}
     >
-      <span className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${t.bg} opacity-0 transition-opacity duration-500 group-hover:opacity-100`} />
-      <span className={`absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${t.bar} transition-transform duration-500 group-hover:scale-x-100`} />
-      <span className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full ${t.glow} opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100`} />
+      <span
+        className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${t.bg} opacity-0 transition-opacity duration-500 group-hover:opacity-100`}
+      />
+      <span
+        className={`absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${t.bar} transition-transform duration-500 group-hover:scale-x-100`}
+      />
+      <span
+        className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full ${t.glow} opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100`}
+      />
 
       <div className="relative">
         <div className="flex items-start justify-between">
-          <span className={`flex h-10 w-10 items-center justify-center rounded-xl border ${t.iconBg} transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6`}>
+          <span
+            className={`flex h-10 w-10 items-center justify-center rounded-xl border ${t.iconBg} transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6`}
+          >
             <Icon size={18} />
           </span>
           {trend && (
-            <span className={`flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-              trendUp ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-rose-200 bg-rose-50 text-rose-500'
-            }`}>
+            <span
+              className={`flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                trendUp
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+                  : 'border-rose-200 bg-rose-50 text-rose-500'
+              }`}
+            >
               {trendUp ? <TrendingUp size={10} /> : null}
               {trend}
             </span>
@@ -1986,10 +2016,18 @@ function InfoBox({ label, value }) {
    ================================================================ */
 function Toast({ message, type }) {
   return (
-    <div className="fixed bottom-6 left-1/2 z-[100] -translate-x-1/2">
-      <div className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-panel ${
-        type === 'error' ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-emerald-200 bg-emerald-50 text-emerald-600'
-      }`}>
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed bottom-6 left-1/2 z-[100] -translate-x-1/2"
+    >
+      <div
+        className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-panel ${
+          type === 'error'
+            ? 'border-rose-200 bg-rose-50 text-rose-600'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-600'
+        }`}
+      >
         {type === 'error' ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
         {message}
       </div>

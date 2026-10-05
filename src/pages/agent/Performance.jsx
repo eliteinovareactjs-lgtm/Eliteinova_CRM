@@ -10,6 +10,10 @@ import {
   ArrowRight, ArrowUpRight, ArrowDownRight, Filter,
   Eye, Crown, Medal, Rocket, Brain,
   Lightbulb, Layers, ArrowRightLeft, Gauge, Hash, MapPin,
+  TrendingUp as TrendingUpIcon, ArrowDown, ArrowUp, Download,
+  Sun, Sunrise, Sunset, Coffee, ChevronUp, BookOpen, UserX,
+  Radio, Fingerprint, CalendarClock, CircleDot, ChevronLeft, X,
+  FileAudio,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -39,7 +43,6 @@ const TABS = [
 const buildDemoPerformance = (agentName) => ({
   agentName,
 
-  /* ---- Targets for the current range ---- */
   targets: {
     calls:        300,
     connected:    200,
@@ -48,21 +51,15 @@ const buildDemoPerformance = (agentName) => ({
     revenue:   '₹1.5 Cr',
   },
 
-  /* ---- Personal goals (weekly) ---- */
   goals: {
     calls:       { current: 264, target: 300 },
     followUps:   { current:  96, target: 100 },
     conversions: { current:  18, target:  20 },
   },
 
-  /* ---- Streaks & productive hours ---- */
-  streak: {
-    days: 4,
-    label: 'Call target streak',
-  },
+  streak: { days: 4, label: 'Call target streak' },
   productiveHours: { today: 6.5, week: 38 },
 
-  /* ---- Lead Performance ---- */
   leads: {
     assigned:   148,
     contacted:  112,
@@ -79,7 +76,6 @@ const buildDemoPerformance = (agentName) => ({
     ],
   },
 
-  /* ---- Funnel — stage by stage ---- */
   funnel: [
     { stage: 'Assigned',    value: 148 },
     { stage: 'Contacted',   value: 112 },
@@ -89,7 +85,6 @@ const buildDemoPerformance = (agentName) => ({
     { stage: 'Converted',   value:  18 },
   ],
 
-  /* ---- Call Performance ---- */
   calls: {
     made:          264,
     connected:     186,
@@ -107,9 +102,20 @@ const buildDemoPerformance = (agentName) => ({
     firstCallRate: 64,
     repeatRate:    22,
     dailyBreakdown: [22, 34, 28, 41, 35, 52, 52],
+    hourlyRate: [
+      { hour: '08', rate: 42 },
+      { hour: '09', rate: 58 },
+      { hour: '10', rate: 78 },
+      { hour: '11', rate: 74 },
+      { hour: '12', rate: 55 },
+      { hour: '13', rate: 38 },
+      { hour: '14', rate: 62 },
+      { hour: '15', rate: 66 },
+      { hour: '16', rate: 58 },
+      { hour: '17', rate: 44 },
+    ],
   },
 
-  /* ---- Call Outcome Analysis ---- */
   callOutcomes: [
     { label: 'Interested',         value: 42, tone: 'rose' },
     { label: 'Follow-Up Required', value: 28, tone: 'amber' },
@@ -120,7 +126,6 @@ const buildDemoPerformance = (agentName) => ({
     { label: 'Converted',          value: 18, tone: 'emerald' },
   ],
 
-  /* ---- Follow-Up Performance ---- */
   followUps: {
     completed: 96,
     pending:   28,
@@ -141,7 +146,6 @@ const buildDemoPerformance = (agentName) => ({
     ],
   },
 
-  /* ---- Conversion Performance ---- */
   conversion: {
     interested: 42,
     converted:  18,
@@ -150,6 +154,8 @@ const buildDemoPerformance = (agentName) => ({
     avgCycleDays:  9,
     topCampaign:  'Q3 Outreach',
     revenue:      '₹1.24 Cr',
+    revenueTarget:'₹1.50 Cr',
+    revenueAchieved: 82.7,
     avgRevenue:   '₹6.9 L',
     byMonth: [
       { label: 'Jul', value: 3 },
@@ -158,14 +164,22 @@ const buildDemoPerformance = (agentName) => ({
       { label: 'Oct', value: 6 },
     ],
     bySource: [
-      { label: 'Q3 Outreach', value: 8, leads: 48, calls: 92, interested: 18 },
-      { label: 'Website',     value: 5, leads: 36, calls: 71, interested: 12 },
-      { label: 'Facebook',    value: 3, leads: 28, calls: 54, interested:  7 },
-      { label: 'Referral',    value: 2, leads: 21, calls: 39, interested:  5 },
+      { label: 'Q3 Outreach', value: 8, leads: 48, calls: 92, connected: 64, interested: 18, rate: 16.7 },
+      { label: 'Website',     value: 5, leads: 36, calls: 71, connected: 49, interested: 12, rate: 13.9 },
+      { label: 'Facebook',    value: 3, leads: 28, calls: 54, connected: 38, interested:  7, rate: 10.7 },
+      { label: 'Referral',    value: 2, leads: 21, calls: 39, connected: 27, interested:  5, rate:  9.5 },
     ],
   },
 
-  /* ---- Daily activity (last 7 days) ---- */
+  leadAging: {
+    sameDay:  82,
+    oneTwoDay: 12,
+    threeSeven: 5,
+    sevenPlus: 1,
+    firstContactAvg: '18 minutes',
+    slaAchievement: 92,
+  },
+
   daily: [
     { day: 'Mon', calls: 22, followUps: 12, conversions: 1 },
     { day: 'Tue', calls: 34, followUps: 15, conversions: 2 },
@@ -176,7 +190,6 @@ const buildDemoPerformance = (agentName) => ({
     { day: 'Sun', calls: 52, followUps: 10, conversions: 1 },
   ],
 
-  /* ---- Prior period (for trend chips) ---- */
   previous: {
     callsMade: 221,
     connected: 158,
@@ -186,6 +199,31 @@ const buildDemoPerformance = (agentName) => ({
     connectionRate: 68,
     conversionRate: 11.4,
     avgCallDuration: '3:54',
+    revenue: '₹0.98 Cr',
+  },
+
+  personalBests: {
+    highestCallsDay:     52,
+    highestCallsDayLabel:'Saturday',
+    highestConversions:   4,
+    highestConversionsLabel: 'Best day',
+    bestConnectionRate:  78,
+    longestStreak:        7,
+    bestFollowUpCompletion: 100,
+  },
+
+  milestones: [
+    { label: '100 Leads Contacted',  achieved: true,  current: 112, target: 100 },
+    { label: '250 Calls Completed',  achieved: true,  current: 264, target: 250 },
+    { label: '15 Conversions',       achieved: true,  current: 18,  target: 15  },
+    { label: '20 Conversions',       achieved: false, current: 18,  target: 20  },
+    { label: '₹1.5 Cr Revenue',      achieved: false, current: 124, target: 150 },
+  ],
+
+  personalRecords: {
+    bestDay: { day: 'Saturday', calls: 52, followUps: 11, conversions: 2 },
+    bestHour: '10 AM',
+    longestStreak: 7,
   },
 });
 
@@ -199,6 +237,7 @@ export default function Performance() {
   const [activeTab, setActiveTab] = useState('overview');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [showExport, setShowExport] = useState(false);
 
   const perf = useMemo(
     () => buildDemoPerformance(user?.name || 'Agent'),
@@ -270,6 +309,15 @@ export default function Performance() {
       tone: 'rose',
       to: '/agent/calls?filter=missed',
     },
+    {
+      key: 'interested',
+      count: perf.conversion.interested - perf.conversion.converted,
+      label: 'interested leads without conversion',
+      hint: 'Schedule follow-ups',
+      icon: Flame,
+      tone: 'amber',
+      to: '/agent/leads?filter=interested',
+    },
   ];
 
   /* -------- COMPUTED: targets table -------- */
@@ -280,30 +328,47 @@ export default function Performance() {
     { key: 'conversions', label: 'Conversions',  target: perf.targets.conversions, actual: perf.conversion.converted,   tone: 'amber' },
   ];
 
+  /* -------- COMPUTED: score breakdown -------- */
+  const scoreBreakdown = useMemo(() => {
+    const callsScore = Math.min(100, Math.round((perf.calls.made / perf.targets.calls) * 100));
+    const connectScore = Math.min(100, Math.round((perf.calls.connected / perf.targets.connected) * 100));
+    const followUpScore = Math.min(100, Math.round((perf.followUps.completed / perf.targets.followUps) * 100));
+    const convScore = Math.min(100, Math.round((perf.conversion.converted / perf.targets.conversions) * 100));
+
+    return {
+      calls: callsScore,
+      connected: connectScore,
+      followUps: followUpScore,
+      conversions: convScore,
+      total: Math.round((callsScore * 0.2) + (connectScore * 0.25) + (followUpScore * 0.25) + (convScore * 0.3)),
+    };
+  }, [perf]);
+
   /* -------- COMPUTED: insights -------- */
   const insights = useMemo(() => {
     const list = [];
 
     const areas = [
-      { label: 'connection', rate: perf.calls.connectionRate },
-      { label: 'follow-up completion', rate: perf.followUps.completionRate },
-      { label: 'conversion', rate: perf.conversion.conversionRate * 4 },
+      { label: 'connection rate',       rate: perf.calls.connectionRate },
+      { label: 'follow-up completion',  rate: perf.followUps.completionRate },
+      { label: 'conversion',            rate: Math.min(100, perf.conversion.conversionRate * 4) },
     ];
     const strongest = areas.reduce((a, b) => (a.rate > b.rate ? a : b));
-    list.push({ tone: 'emerald', icon: Trophy, text: `You're strongest at ${strongest.label}.` });
+    list.push({
+      tone: 'emerald', icon: Trophy,
+      text: `You're strongest at ${strongest.label} (${strongest.rate}%).`,
+    });
 
     if (connectTrend.dir === 'up') {
       list.push({
-        tone: 'emerald',
-        icon: TrendingUp,
+        tone: 'emerald', icon: TrendingUp,
         text: `Connection rate improved by ${connectTrend.pct}% compared to last period.`,
       });
     }
 
     if (perf.leads.untouched > 0) {
       list.push({
-        tone: 'rose',
-        icon: AlertTriangle,
+        tone: 'rose', icon: AlertTriangle,
         text: `${perf.leads.untouched} untouched leads are still waiting for a first call.`,
       });
     }
@@ -311,19 +376,22 @@ export default function Performance() {
     const callsRemaining = perf.targets.calls - perf.calls.made;
     if (callsRemaining > 0) {
       list.push({
-        tone: 'amber',
-        icon: Target,
+        tone: 'amber', icon: Target,
         text: `${callsRemaining} more calls to reach your weekly target.`,
       });
     }
 
     if (worstDropOff) {
       list.push({
-        tone: 'purple',
-        icon: TrendingDown,
+        tone: 'purple', icon: TrendingDown,
         text: `Biggest funnel drop-off: ${worstDropOff.from} → ${worstDropOff.to} (${worstDropOff.drop}%).`,
       });
     }
+
+    list.push({
+      tone: 'emerald', icon: Crown,
+      text: `Best calling day was ${perf.personalBests.highestCallsDayLabel} with ${perf.personalBests.highestCallsDay} calls.`,
+    });
 
     return list;
   }, [perf, connectTrend, worstDropOff]);
@@ -354,7 +422,13 @@ export default function Performance() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowExport(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-brand-lilac bg-white px-3.5 py-1.5 text-[11px] font-semibold text-brand-ink hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta"
+            >
+              <Download size={12} /> Export Report
+            </button>
             <RangeDropdown
               value={range}
               onChange={setRange}
@@ -366,15 +440,7 @@ export default function Performance() {
           </div>
         </div>
 
-        {/* ================= HERO SCORECARD ================= */}
-        <ScorecardHero
-          perf={perf}
-          range={range}
-          connectTrend={connectTrend}
-          convertTrend={convertTrend}
-        />
-
-        {/* ================= KPI STRIP (moved up) ================= */}
+        {/* ================= KPI STRIP (MOVED TO TOP) ================= */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <AnimatedStatCard
             label="Leads Assigned"
@@ -385,6 +451,7 @@ export default function Performance() {
             trend={`${leadTrend.dir === 'up' ? '+' : '-'}${leadTrend.pct}%`}
             trendUp={leadTrend.dir === 'up'}
             delay={0}
+            onClick={() => navigate('/agent/leads')}
           />
           <AnimatedStatCard
             label="Calls Made"
@@ -395,6 +462,7 @@ export default function Performance() {
             trend={`${callTrend.dir === 'up' ? '+' : '-'}${callTrend.pct}%`}
             trendUp={callTrend.dir === 'up'}
             delay={40}
+            onClick={() => navigate('/agent/calls')}
           />
           <AnimatedStatCard
             label="Follow-Ups Done"
@@ -405,6 +473,7 @@ export default function Performance() {
             trend={`${followUpTrend.dir === 'up' ? '+' : '-'}${followUpTrend.pct}%`}
             trendUp={followUpTrend.dir === 'up'}
             delay={80}
+            onClick={() => navigate('/agent/follow-ups')}
           />
           <AnimatedStatCard
             label="Interested"
@@ -413,6 +482,7 @@ export default function Performance() {
             icon={Flame}
             color="rose"
             delay={120}
+            onClick={() => navigate('/agent/leads?filter=interested')}
           />
           <AnimatedStatCard
             label="Converted"
@@ -423,14 +493,24 @@ export default function Performance() {
             trend={`${convertTrend.dir === 'up' ? '+' : '-'}${convertTrend.pct}%`}
             trendUp={convertTrend.dir === 'up'}
             delay={160}
+            onClick={() => navigate('/agent/leads?filter=converted')}
           />
         </div>
 
+        {/* ================= HERO SCORECARD ================= */}
+        <ScorecardHero
+          perf={perf}
+          range={range}
+          connectTrend={connectTrend}
+          convertTrend={convertTrend}
+          scoreBreakdown={scoreBreakdown}
+        />
+
+        {/* ================= PERFORMANCE ALERTS ================= */}
+        <PerformanceAlerts actions={actions} onNavigate={navigate} />
+
         {/* ================= TARGET vs ACTUAL ================= */}
         <TargetCard rows={targetRows} />
-
-        {/* ================= ACTION REQUIRED ================= */}
-        <ActionRequiredCard actions={actions} onNavigate={navigate} />
 
         {/* ================= PERSONAL GOALS + STREAK ================= */}
         <GoalsAndStreakRow goals={perf.goals} streak={perf.streak} />
@@ -467,18 +547,27 @@ export default function Performance() {
             worstDropOff={worstDropOff}
             insights={insights}
             bestDay={bestDay}
-            callTrend={callTrend}
-            connectTrend={connectTrend}
-            followUpTrend={followUpTrend}
-            convertTrend={convertTrend}
             onNavigate={navigate}
           />
         )}
         {activeTab === 'leads'      && <LeadTab       perf={perf} onNavigate={navigate} />}
-        {activeTab === 'calls'      && <CallTab       perf={perf} />}
+        {activeTab === 'calls'      && <CallTab       perf={perf} onNavigate={navigate} />}
         {activeTab === 'followups'  && <FollowUpTab   perf={perf} onNavigate={navigate} />}
-        {activeTab === 'conversion' && <ConversionTab perf={perf} />}
+        {activeTab === 'conversion' && <ConversionTab perf={perf} onNavigate={navigate} />}
         {activeTab === 'daily'      && <DailyTab      perf={perf} bestDay={bestDay} />}
+
+        {/* ================= EXPORT MODAL ================= */}
+        {showExport && (
+          <ExportModal
+            perf={perf}
+            range={range}
+            onClose={() => setShowExport(false)}
+            onExported={(format) => {
+              setShowExport(false);
+              console.log(`Exporting as ${format}...`);
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -550,24 +639,20 @@ function RangeDropdown({ value, onChange, customFrom, customTo, setCustomFrom, s
 }
 
 /* ================================================================
-   HERO SCORECARD
+   HERO SCORECARD — with visible breakdown
    ================================================================ */
-function ScorecardHero({ perf, range, connectTrend, convertTrend }) {
+function ScorecardHero({ perf, range, connectTrend, convertTrend, scoreBreakdown }) {
   const rangeLabel = RANGE_OPTIONS.find((o) => o.value === range)?.label || 'This period';
-
-  const score = Math.round(
-    (perf.calls.connectionRate * 0.3) +
-    (perf.followUps.completionRate * 0.3) +
-    (Math.min(perf.conversion.conversionRate * 4, 100) * 0.4)
-  );
+  const score = scoreBreakdown.total;
 
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-brand-lilac bg-gradient-to-r from-white via-white to-brand-lilac/20 shadow-[0_8px_24px_-12px_rgba(227,28,121,0.2)]">
       <span className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-brand-magenta/10 blur-3xl" />
       <span className="pointer-events-none absolute -bottom-10 left-1/3 h-32 w-32 rounded-full bg-brand-purple/10 blur-3xl" />
 
-      <div className="relative flex flex-wrap items-center justify-between gap-4 p-5">
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
+      <div className="relative grid grid-cols-1 gap-6 p-5 lg:grid-cols-3">
+        {/* SCORE */}
+        <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <span className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card">
               <Trophy size={14} />
@@ -578,64 +663,80 @@ function ScorecardHero({ perf, range, connectTrend, convertTrend }) {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="flex items-baseline gap-1">
-              <p className="font-display text-5xl font-bold leading-none tabular-nums text-brand-purple">
-                {score}
-              </p>
-              <p className="text-sm font-bold text-brand-ink/40">/100</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <ScorePill icon={PhoneCall}     label="Connection"  value={`${perf.calls.connectionRate}%`}   dir={connectTrend.dir} />
-              <ScorePill icon={CalendarCheck} label="Follow-Ups"  value={`${perf.followUps.completionRate}%`} dir="up" />
-              <ScorePill icon={Award}         label="Conversion"  value={`${perf.conversion.conversionRate}%`} dir={convertTrend.dir} />
-            </div>
+          <div className="flex items-baseline gap-2">
+            <p className="font-display text-6xl font-bold leading-none tabular-nums text-brand-purple">
+              {score}
+            </p>
+            <p className="text-sm font-bold text-brand-ink/40">/100</p>
           </div>
 
           <div>
-            <div className="mb-1.5 flex items-center justify-between text-[10px]">
-              <span className="font-semibold uppercase tracking-wide text-brand-ink/50">
-                Composite performance
-              </span>
-              <span className="font-mono font-bold text-brand-ink">
-                {score} / 100
-              </span>
-            </div>
             <div className="h-2 overflow-hidden rounded-full bg-brand-lilac">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple transition-all duration-1000"
                 style={{ width: `${score}%` }}
               />
             </div>
+            <p className="mt-1.5 text-[10px] font-semibold text-emerald-600">
+              ↑ {connectTrend.pct}% vs previous period
+            </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <MiniMetric label="Talk time" value={perf.calls.totalTalkTime} icon={Timer} />
-          <MiniMetric label="Avg call"  value={perf.calls.avgDuration}   icon={Clock} />
-          <MiniMetric label="Revenue"   value={perf.conversion.revenue}  icon={Star} />
+        {/* BREAKDOWN */}
+        <div className="lg:col-span-2">
+          <p className="mb-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-ink/50">
+            <Gauge size={11} /> Score Breakdown
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <ScoreBreakdownItem label="Calls"       value={scoreBreakdown.calls}       tone="purple" />
+            <ScoreBreakdownItem label="Connection"  value={scoreBreakdown.connected}   tone="emerald" />
+            <ScoreBreakdownItem label="Follow-Ups"  value={scoreBreakdown.followUps}   tone="emerald" />
+            <ScoreBreakdownItem label="Conversion"  value={scoreBreakdown.conversions} tone="amber" />
+          </div>
+
+          {/* Why did score change */}
+          <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-600 ring-1 ring-emerald-200">
+              <ArrowUp size={9} /> +4% connection rate
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-600 ring-1 ring-emerald-200">
+              <ArrowUp size={9} /> +2% follow-ups
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 font-semibold text-rose-500 ring-1 ring-rose-200">
+              <ArrowDown size={9} /> -1% conversion
+            </span>
+          </div>
         </div>
+      </div>
+
+      {/* Bottom Mini Metrics */}
+      <div className="relative flex flex-wrap gap-3 border-t border-brand-lilac/60 bg-white/40 p-4">
+        <MiniMetric label="Talk time" value={perf.calls.totalTalkTime} icon={Timer} />
+        <MiniMetric label="Avg call"  value={perf.calls.avgDuration}   icon={Clock} />
+        <MiniMetric label="Revenue"   value={perf.conversion.revenue}  icon={Star} />
+        <MiniMetric label="Avg deal"  value={perf.conversion.avgRevenue} icon={Target} />
       </div>
     </div>
   );
 }
 
-function ScorePill({ icon: Icon, label, value, dir }) {
-  const isUp = dir === 'up';
+function ScoreBreakdownItem({ label, value, tone }) {
+  const tones = {
+    purple:  { bg: 'bg-violet-50', text: 'text-brand-purple', bar: 'from-brand-purple to-brand-magenta' },
+    emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', bar: 'from-emerald-500 to-teal-400' },
+    amber:   { bg: 'bg-amber-50',   text: 'text-amber-600',   bar: 'from-amber-500 to-orange-400' },
+  };
+  const t = tones[tone];
   return (
-    <div className={`inline-flex items-center gap-2 rounded-xl border bg-white px-3 py-1.5 ${
-      isUp ? 'border-emerald-200' : 'border-amber-200'
-    }`}>
-      <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${
-        isUp ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-      }`}>
-        <Icon size={12} />
-      </span>
-      <div className="leading-tight">
-        <p className="text-[9px] font-semibold uppercase tracking-wide text-brand-ink/50">{label}</p>
-        <p className={`font-display text-sm font-bold ${isUp ? 'text-emerald-600' : 'text-amber-600'}`}>
-          {value}
-        </p>
+    <div className={`rounded-xl ${t.bg} p-3`}>
+      <p className="text-[9px] font-semibold uppercase tracking-wide text-brand-ink/50">{label}</p>
+      <p className={`font-display text-2xl font-bold tabular-nums ${t.text}`}>{value}%</p>
+      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/60">
+        <div
+          className={`h-full rounded-full bg-gradient-to-r ${t.bar}`}
+          style={{ width: `${value}%` }}
+        />
       </div>
     </div>
   );
@@ -653,73 +754,11 @@ function MiniMetric({ icon: Icon, label, value }) {
 }
 
 /* ================================================================
-   TARGET vs ACTUAL
+   PERFORMANCE ALERTS
    ================================================================ */
-function TargetCard({ rows }) {
-  return (
-    <div className="card !p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card">
-            <Target size={13} />
-          </span>
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-magenta">
-            Target Achievement
-          </p>
-        </div>
-        <span className="rounded-full bg-brand-lilac/60 px-2.5 py-0.5 text-[10px] font-bold text-brand-purple">
-          This period
-        </span>
-      </div>
+function PerformanceAlerts({ actions, onNavigate }) {
+  const visible = actions.filter((a) => a.count > 0);
 
-      <div className="space-y-4">
-        {rows.map((r) => {
-          const pct = r.target > 0 ? Math.min(150, Math.round((r.actual / r.target) * 100)) : 0;
-          const visual = Math.min(100, pct);
-          const tones = {
-            purple:  { bar: 'from-brand-purple to-brand-magenta', text: 'text-brand-purple' },
-            emerald: { bar: 'from-emerald-500 to-teal-400',       text: 'text-emerald-600' },
-            amber:   { bar: 'from-amber-500 to-orange-400',       text: 'text-amber-600' },
-          };
-          const t = tones[r.tone];
-          const isOver = pct >= 100;
-          const isWarn = pct < 75;
-
-          return (
-            <div key={r.key}>
-              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span className="font-semibold text-brand-ink/70">{r.label}</span>
-                <div className="flex items-center gap-2">
-                  <span className={`font-mono font-bold ${t.text}`}>
-                    {r.actual} <span className="text-brand-ink/30">/ {r.target}</span>
-                  </span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                    isOver ? 'bg-emerald-100 text-emerald-600' :
-                    isWarn ? 'bg-rose-100 text-rose-500' :
-                             'bg-amber-100 text-amber-700'
-                  }`}>
-                    {pct}%
-                  </span>
-                </div>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-brand-lilac/50">
-                <div
-                  className={`h-full rounded-full bg-gradient-to-r ${t.bar} transition-all duration-700`}
-                  style={{ width: `${visual}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================
-   ACTION REQUIRED
-   ================================================================ */
-function ActionRequiredCard({ actions, onNavigate }) {
   return (
     <div className="card !p-5">
       <div className="mb-4 flex items-center justify-between">
@@ -728,11 +767,11 @@ function ActionRequiredCard({ actions, onNavigate }) {
             <Zap size={13} />
           </span>
           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-magenta">
-            Action Required
+            Performance Alerts
           </p>
         </div>
         <span className="text-[10px] font-semibold uppercase tracking-wide text-brand-ink/40">
-          {actions.filter((a) => a.count > 0).length} items
+          {visible.length} items
         </span>
       </div>
 
@@ -781,6 +820,76 @@ function ActionRequiredCard({ actions, onNavigate }) {
 }
 
 /* ================================================================
+   TARGET vs ACTUAL — with remaining
+   ================================================================ */
+function TargetCard({ rows }) {
+  return (
+    <div className="card !p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card">
+            <Target size={13} />
+          </span>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-magenta">
+            Target Achievement
+          </p>
+        </div>
+        <span className="rounded-full bg-brand-lilac/60 px-2.5 py-0.5 text-[10px] font-bold text-brand-purple">
+          This period
+        </span>
+      </div>
+
+      <div className="space-y-4">
+        {rows.map((r) => {
+          const pct = r.target > 0 ? Math.min(150, Math.round((r.actual / r.target) * 100)) : 0;
+          const visual = Math.min(100, pct);
+          const remaining = Math.max(0, r.target - r.actual);
+          const tones = {
+            purple:  { bar: 'from-brand-purple to-brand-magenta', text: 'text-brand-purple' },
+            emerald: { bar: 'from-emerald-500 to-teal-400',       text: 'text-emerald-600' },
+            amber:   { bar: 'from-amber-500 to-orange-400',       text: 'text-amber-600' },
+          };
+          const t = tones[r.tone];
+          const isOver = pct >= 100;
+          const isWarn = pct < 75;
+
+          return (
+            <div key={r.key}>
+              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-brand-ink/70">{r.label}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`font-mono font-bold ${t.text}`}>
+                    {r.actual} <span className="text-brand-ink/30">/ {r.target}</span>
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    isOver ? 'bg-emerald-100 text-emerald-600' :
+                    isWarn ? 'bg-rose-100 text-rose-500' :
+                             'bg-amber-100 text-amber-700'
+                  }`}>
+                    {pct}%
+                  </span>
+                </div>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-brand-lilac/50">
+                <div
+                  className={`h-full rounded-full bg-gradient-to-r ${t.bar} transition-all duration-700`}
+                  style={{ width: `${visual}%` }}
+                />
+              </div>
+              <p className="mt-1 text-[10px] font-semibold text-brand-ink/50">
+                {remaining > 0
+                  ? <span className="text-brand-magenta">{remaining} more needed to reach target</span>
+                  : <span className="text-emerald-600">Target achieved ✓</span>}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
    PERSONAL GOALS + STREAK
    ================================================================ */
 function GoalsAndStreakRow({ goals, streak }) {
@@ -792,7 +901,6 @@ function GoalsAndStreakRow({ goals, streak }) {
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      {/* Goals */}
       <div className="card !p-5 lg:col-span-2">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -849,7 +957,6 @@ function GoalsAndStreakRow({ goals, streak }) {
         </div>
       </div>
 
-      {/* Streak */}
       <div className="relative overflow-hidden rounded-2xl border border-brand-lilac bg-gradient-to-br from-amber-50 to-white p-5">
         <span className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-amber-500/10 blur-2xl" />
 
@@ -892,13 +999,11 @@ function OverviewTab({
 }) {
   return (
     <div className="space-y-5">
-      {/* ---- Funnel + Drop-off ---- */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <FunnelCard funnel={perf.funnel} />
         <DropOffCard dropOffs={funnelDropOffs} worst={worstDropOff} />
       </div>
 
-      {/* ---- Weekly sparklines ---- */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <WeeklyChartCard
           title="Calls per day"
@@ -924,16 +1029,16 @@ function OverviewTab({
         />
       </div>
 
-      {/* ---- Previous Period Comparison ---- */}
       <PreviousComparisonCard perf={perf} />
 
-      {/* ---- Insights ---- */}
+      <PersonalBestsCard bests={perf.personalBests} />
+
       <InsightsCard insights={insights} />
 
-      {/* ---- Best Day ---- */}
+      <MilestonesCard milestones={perf.milestones} />
+
       <BestDayCard bestDay={bestDay} />
 
-      {/* ---- Quick numbers ---- */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <QuickNumber
           label="Untouched leads"
@@ -968,6 +1073,109 @@ function OverviewTab({
 }
 
 /* ================================================================
+   PERSONAL BESTS
+   ================================================================ */
+function PersonalBestsCard({ bests }) {
+  const items = [
+    { label: 'Highest Calls in a Day',  value: `${bests.highestCallsDay}`,        sub: bests.highestCallsDayLabel, icon: PhoneCall,     tone: 'purple' },
+    { label: 'Highest Conversions',     value: `${bests.highestConversions}`,     sub: bests.highestConversionsLabel, icon: Award,       tone: 'emerald' },
+    { label: 'Best Connection Rate',    value: `${bests.bestConnectionRate}%`,    sub: 'All time',                 icon: Percent,       tone: 'emerald' },
+    { label: 'Longest Streak',          value: `${bests.longestStreak} days`,     sub: 'Consecutive',              icon: Flame,         tone: 'amber' },
+    { label: 'Best Follow-Up Rate',     value: `${bests.bestFollowUpCompletion}%`,sub: 'Completion',               icon: CheckCircle2,  tone: 'emerald' },
+  ];
+
+  return (
+    <div className="card !p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-card">
+          <Crown size={13} />
+        </span>
+        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700">
+          Personal Bests
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {items.map((item) => {
+          const Icon = item.icon;
+          const tones = {
+            purple:  { bg: 'bg-violet-50', text: 'text-brand-purple' },
+            emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600' },
+            amber:   { bg: 'bg-amber-50',   text: 'text-amber-600' },
+          };
+          const t = tones[item.tone];
+          return (
+            <div key={item.label} className="flex flex-col items-center gap-2 rounded-xl border border-brand-lilac bg-white p-3 text-center">
+              <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${t.bg} ${t.text}`}>
+                <Icon size={16} />
+              </span>
+              <p className={`font-display text-lg font-bold tabular-nums ${t.text}`}>{item.value}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-brand-ink/60">{item.label}</p>
+              <p className="text-[9px] text-brand-ink/40">{item.sub}</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   MILESTONES
+   ================================================================ */
+function MilestonesCard({ milestones }) {
+  return (
+    <div className="card !p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card">
+          <Medal size={13} />
+        </span>
+        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-magenta">
+          Milestones
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+        {milestones.map((m) => {
+          const pct = m.target > 0 ? Math.min(100, Math.round((m.current / m.target) * 100)) : 0;
+          const remaining = Math.max(0, m.target - m.current);
+          return (
+            <div
+              key={m.label}
+              className={`flex items-center gap-3 rounded-xl border-2 bg-white p-3 ${
+                m.achieved ? 'border-emerald-200' : 'border-brand-lilac/70'
+              }`}
+            >
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                m.achieved ? 'bg-emerald-100 text-emerald-600' : 'bg-brand-mist text-brand-ink/40'
+              }`}>
+                {m.achieved ? <CheckCircle2 size={16} /> : <CircleDot size={16} />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className={`text-xs font-semibold ${m.achieved ? 'text-emerald-600' : 'text-brand-ink'}`}>
+                  {m.label}
+                </p>
+                <p className="text-[10px] text-brand-ink/50">
+                  {m.current} / {m.target} {m.achieved ? '· Achieved ✓' : `· ${remaining} to go`}
+                </p>
+                {!m.achieved && (
+                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-brand-lilac/50">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
    FUNNEL CARD
    ================================================================ */
 function FunnelCard({ funnel }) {
@@ -990,7 +1198,7 @@ function FunnelCard({ funnel }) {
       </div>
 
       <div className="space-y-2">
-        {funnel.map((s, i) => {
+        {funnel.map((s) => {
           const pct = Math.round((s.value / max) * 100);
           const width = Math.max(20, pct);
           return (
@@ -1070,8 +1278,7 @@ function DropOffCard({ dropOffs, worst }) {
             <AlertTriangle size={10} /> Biggest Drop-off
           </p>
           <p className="text-xs text-rose-800">
-            <b>{worst.from} → {worst.to}</b> loses{' '}
-            <b>{worst.drop}%</b> of leads. Focus here to improve conversion.
+            <b>{worst.from} → {worst.to}</b> loses <b>{worst.drop}%</b> of leads. Focus here to improve conversion.
           </p>
         </div>
       )}
@@ -1088,7 +1295,13 @@ function PreviousComparisonCard({ perf }) {
     { label: 'Connected',   current: perf.calls.connected,        previous: perf.previous.connected },
     { label: 'Follow-ups',  current: perf.followUps.completed,    previous: perf.previous.followUpsCompleted },
     { label: 'Conversions', current: perf.conversion.converted,   previous: perf.previous.converted },
+    { label: 'Leads',       current: perf.leads.assigned,         previous: perf.previous.leadsAssigned },
   ];
+
+  const convGrowth = rows.find((r) => r.label === 'Conversions');
+  const convPct = convGrowth.previous > 0 ? ((convGrowth.current - convGrowth.previous) / convGrowth.previous) * 100 : 0;
+  const callsGrowth = rows.find((r) => r.label === 'Calls');
+  const callsPct = callsGrowth.previous > 0 ? ((callsGrowth.current - callsGrowth.previous) / callsGrowth.previous) * 100 : 0;
 
   return (
     <div className="card !p-0 overflow-hidden">
@@ -1119,15 +1332,9 @@ function PreviousComparisonCard({ perf }) {
               const up = pct >= 0;
               return (
                 <tr key={r.label} className="hover:bg-brand-mist/40">
-                  <td className="whitespace-nowrap px-5 py-3 font-semibold text-brand-ink">
-                    {r.label}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 font-display font-bold text-brand-ink">
-                    {r.current}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-brand-ink/60">
-                    {r.previous}
-                  </td>
+                  <td className="whitespace-nowrap px-5 py-3 font-semibold text-brand-ink">{r.label}</td>
+                  <td className="whitespace-nowrap px-5 py-3 font-display font-bold text-brand-ink">{r.current}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-brand-ink/60">{r.previous}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-right">
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
                       up ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'
@@ -1141,6 +1348,15 @@ function PreviousComparisonCard({ perf }) {
             })}
           </tbody>
         </table>
+      </div>
+
+      <div className="border-t border-brand-lilac/60 bg-brand-mist/30 px-5 py-3">
+        <p className="flex items-start gap-2 text-xs text-brand-ink/70">
+          <Lightbulb size={12} className="mt-0.5 shrink-0 text-amber-500" />
+          {convPct > callsPct
+            ? <span>Your <b className="text-emerald-600">conversion growth ({convPct.toFixed(1)}%)</b> is outpacing your call-volume growth ({callsPct.toFixed(1)}%). You're getting better at converting — keep it up.</span>
+            : <span>Your <b className="text-amber-600">call volume grew {callsPct.toFixed(1)}%</b> while conversions grew {convPct.toFixed(1)}%. Focus on follow-up discipline to lift conversion.</span>}
+        </p>
       </div>
     </div>
   );
@@ -1157,7 +1373,7 @@ function InsightsCard({ insights }) {
           <Lightbulb size={13} />
         </span>
         <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-magenta">
-          Performance Insights
+          Personal Insights
         </p>
       </div>
 
@@ -1306,9 +1522,7 @@ function BarBreakdownCard({ title, rows }) {
     <div className="card !p-4">
       <div className="mb-3 flex items-center justify-between">
         <p className="font-display text-sm font-semibold text-brand-ink">{title}</p>
-        <span className="text-[10px] font-bold uppercase tracking-wide text-brand-ink/40">
-          {total} total
-        </span>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-brand-ink/40">{total} total</span>
       </div>
 
       <div className="space-y-2.5">
@@ -1365,10 +1579,15 @@ function QuickNumber({ label, value, icon: Icon, tone = 'purple', onClick }) {
    TAB — LEAD PERFORMANCE
    ================================================================ */
 function LeadTab({ perf, onNavigate }) {
-  const { leads } = perf;
-  const contactRate = leads.assigned > 0
-    ? Math.round((leads.contacted / leads.assigned) * 100)
-    : 0;
+  const { leads, leadAging } = perf;
+  const contactRate = leads.assigned > 0 ? Math.round((leads.contacted / leads.assigned) * 100) : 0;
+
+  const agingRows = [
+    { label: 'Same Day',    value: leadAging.sameDay,    tone: 'emerald' },
+    { label: '1–2 Days',    value: leadAging.oneTwoDay,  tone: 'amber' },
+    { label: '3–7 Days',    value: leadAging.threeSeven, tone: 'amber' },
+    { label: '7+ Days',     value: leadAging.sevenPlus,  tone: 'rose' },
+  ];
 
   return (
     <div className="space-y-5">
@@ -1413,6 +1632,31 @@ function LeadTab({ perf, onNavigate }) {
           </div>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <BarBreakdownCard title="Lead Aging" rows={agingRows} />
+
+        <div className="card !p-5">
+          <p className="mb-3 flex items-center gap-1.5 font-display text-sm font-semibold text-brand-ink">
+            <Timer size={13} className="text-brand-purple" /> Response Performance
+          </p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <QualityMetric label="First Contact Avg" value={leadAging.firstContactAvg} icon={Clock}         tone="purple" />
+            <QualityMetric label="SLA Achievement"   value={`${leadAging.slaAchievement}%`} icon={CheckCircle2} tone="emerald" />
+          </div>
+
+          <div className="mt-4 rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
+            <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-ink/50">
+              <Lightbulb size={10} /> Insight
+            </p>
+            <p className="text-xs text-brand-ink/70">
+              You respond to <b>{leadAging.sameDay}%</b> of new leads on the same day. Your average first contact is{' '}
+              <b className="text-brand-purple">{leadAging.firstContactAvg}</b>.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1420,19 +1664,17 @@ function LeadTab({ perf, onNavigate }) {
 /* ================================================================
    TAB — CALL PERFORMANCE
    ================================================================ */
-function CallTab({ perf }) {
+function CallTab({ perf, onNavigate }) {
   const { calls } = perf;
-  const missedRate = calls.made > 0
-    ? Math.round((calls.missed / calls.made) * 100)
-    : 0;
+  const missedRate = calls.made > 0 ? Math.round((calls.missed / calls.made) * 100) : 0;
 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-        <StatBig label="Calls Made" value={calls.made}      icon={PhoneCall}     color="purple"  sub={`${calls.totalTalkTime} talk time`} />
-        <StatBig label="Connected"  value={calls.connected} icon={PhoneIncoming} color="emerald" sub={`${calls.connectionRate}% connection`} />
+        <StatBig label="Calls Made" value={calls.made}      icon={PhoneCall}     color="purple"  sub={`${calls.totalTalkTime} talk time`} onClick={() => onNavigate('/agent/calls')} />
+        <StatBig label="Connected"  value={calls.connected} icon={PhoneIncoming} color="emerald" sub={`${calls.connectionRate}% connection`} onClick={() => onNavigate('/agent/calls?filter=connected')} />
         <StatBig label="Outgoing"   value={calls.outgoing}  icon={PhoneOutgoing} color="purple"  sub="Agent-initiated" />
-        <StatBig label="Missed"     value={calls.missed}    icon={PhoneMissed}   color="rose"    sub={`${missedRate}% of calls`} />
+        <StatBig label="Missed"     value={calls.missed}    icon={PhoneMissed}   color="rose"    sub={`${missedRate}% of calls`} onClick={() => onNavigate('/agent/calls?filter=missed')} />
       </div>
 
       <div className="card !p-5">
@@ -1455,6 +1697,51 @@ function CallTab({ perf }) {
         </div>
       </div>
 
+      <div className="card !p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-card">
+              <Sunrise size={13} />
+            </span>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700">
+              Your Best Calling Hours
+            </p>
+          </div>
+          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-700">
+            Peak: {calls.bestHour}
+          </span>
+        </div>
+
+        <div className="flex h-32 items-end gap-1">
+          {calls.hourlyRate.map((h) => {
+            const isBest = calls.bestHour.startsWith(h.hour) || parseInt(h.hour) === 10;
+            return (
+              <div key={h.hour} className="group relative flex flex-1 flex-col items-center gap-1">
+                <span className="text-[9px] font-bold text-brand-ink/50">{h.rate}%</span>
+                <div
+                  className={`w-full rounded-t-md transition-all duration-500 hover:brightness-110 ${
+                    isBest
+                      ? 'bg-gradient-to-t from-amber-500 to-orange-400'
+                      : 'bg-gradient-to-t from-brand-purple to-brand-magenta'
+                  }`}
+                  style={{ height: `${h.rate}%` }}
+                />
+                <span className={`text-[9px] font-semibold uppercase ${isBest ? 'text-amber-700' : 'text-brand-ink/40'}`}>
+                  {h.hour}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="flex items-start gap-2 text-xs text-amber-800">
+            <Lightbulb size={12} className="mt-0.5 shrink-0 text-amber-600" />
+            <span>Your highest connection rate occurs between <b>10 AM – 11 AM</b>. Consider scheduling more outbound calls during this window.</span>
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <BarBreakdownCard title="Call Outcome Analysis" rows={perf.callOutcomes} />
 
@@ -1469,10 +1756,10 @@ function CallTab({ perf }) {
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <SmallStat label="Avg Call"     value={calls.avgDuration}          icon={Clock}         tone="purple" />
-            <SmallStat label="Talk Time"    value={calls.totalTalkTime}        icon={Timer}         tone="emerald" />
-            <SmallStat label="1st-Call Rate" value={`${calls.firstCallRate}%`} icon={PhoneOutgoing} tone="purple" />
-            <SmallStat label="Repeat Rate"  value={`${calls.repeatRate}%`}     icon={Repeat}        tone="amber" />
+            <SmallStat label="Avg Call"      value={calls.avgDuration}          icon={Clock}         tone="purple" />
+            <SmallStat label="Talk Time"     value={calls.totalTalkTime}        icon={Timer}         tone="emerald" />
+            <SmallStat label="1st-Call Rate" value={`${calls.firstCallRate}%`}  icon={PhoneOutgoing} tone="purple" />
+            <SmallStat label="Repeat Rate"   value={`${calls.repeatRate}%`}     icon={Repeat}        tone="amber" />
           </div>
         </div>
       </div>
@@ -1510,7 +1797,7 @@ function FollowUpTab({ perf, onNavigate }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-        <StatBig label="Completed" value={followUps.completed} icon={CheckCircle2}  color="emerald" sub={`${followUps.completionRate}% rate`} />
+        <StatBig label="Completed" value={followUps.completed} icon={CheckCircle2}  color="emerald" sub={`${followUps.completionRate}% rate`} onClick={() => onNavigate('/agent/follow-ups?filter=completed')} />
         <StatBig label="Pending"   value={followUps.pending}   icon={Clock}         color="amber"   sub="Waiting your action" />
         <StatBig
           label="Overdue"
@@ -1563,6 +1850,11 @@ function FollowUpTab({ perf, onNavigate }) {
               <b>{followUps.overdue} overdue follow-ups</b> — clear them to boost your score.
             </p>
           </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <SmallStat label="Follow-Up → Conversion" value={`${followUps.conversions} conversions`} icon={Award}   tone="emerald" />
+            <SmallStat label="Avg per Lead"           value={followUps.avgPerLead}                   icon={Repeat}  tone="purple" />
+          </div>
         </div>
       </div>
     </div>
@@ -1572,14 +1864,15 @@ function FollowUpTab({ perf, onNavigate }) {
 /* ================================================================
    TAB — CONVERSION PERFORMANCE
    ================================================================ */
-function ConversionTab({ perf }) {
+function ConversionTab({ perf, onNavigate }) {
   const { conversion } = perf;
+  const remaining = 100 - conversion.revenueAchieved;
 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-        <StatBig label="Interested"       value={conversion.interested}          icon={Flame}   color="rose"    sub="Active pipeline" />
-        <StatBig label="Converted"        value={conversion.converted}           icon={Award}   color="emerald" sub="Won deals" />
+        <StatBig label="Interested"       value={conversion.interested}          icon={Flame}   color="rose"    sub="Active pipeline" onClick={() => onNavigate('/agent/leads?filter=interested')} />
+        <StatBig label="Converted"        value={conversion.converted}           icon={Award}   color="emerald" sub="Won deals" onClick={() => onNavigate('/agent/leads?filter=converted')} />
         <StatBig label="Conversion Rate"  value={`${conversion.conversionRate}%`} icon={Percent} color="purple" sub="Deals / leads" />
         <StatBig label="Avg Cycle"        value={`${conversion.avgCycleDays}d`}   icon={Repeat}  color="amber"   sub="First call → conversion" />
       </div>
@@ -1599,6 +1892,38 @@ function ConversionTab({ perf }) {
           <QualityMetric label="Overall Rate"           value={`${conversion.conversionRate}%`}         icon={Percent}    tone="purple" />
           <QualityMetric label="Revenue"                value={conversion.revenue}                     icon={Star}       tone="amber" />
           <QualityMetric label="Avg per Deal"           value={conversion.avgRevenue}                  icon={Target}     tone="emerald" />
+        </div>
+      </div>
+
+      <div className="card !p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-400 text-white shadow-card">
+            <Star size={13} />
+          </span>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700">
+            Revenue Performance
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <SmallStat label="Revenue"    value={conversion.revenue}        icon={Star}     tone="emerald" />
+          <SmallStat label="Target"     value={conversion.revenueTarget}  icon={Target}   tone="purple" />
+          <SmallStat label="Avg / Deal" value={conversion.avgRevenue}     icon={Award}    tone="amber" />
+          <SmallStat label="Achieved"   value={`${conversion.revenueAchieved}%`} icon={Percent} tone="emerald" />
+        </div>
+
+        <div className="mt-4">
+          <div className="h-2.5 overflow-hidden rounded-full bg-brand-lilac/50">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-700"
+              style={{ width: `${conversion.revenueAchieved}%` }}
+            />
+          </div>
+          <p className="mt-2 text-[11px] font-semibold text-brand-ink/60">
+            {remaining > 0
+              ? <span>₹{Math.round((remaining / 100) * 150)}L remaining to reach revenue target.</span>
+              : <span className="text-emerald-600">Revenue target achieved ✓</span>}
+          </p>
         </div>
       </div>
 
@@ -1651,6 +1976,9 @@ function ConversionTab({ perf }) {
             </span>
             <h3 className="font-display text-sm font-semibold text-brand-ink">Campaign Performance</h3>
           </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-700">
+            <Trophy size={10} /> Best: {conversion.topCampaign}
+          </span>
         </div>
 
         <div className="overflow-x-auto">
@@ -1660,8 +1988,10 @@ function ConversionTab({ perf }) {
                 <th className="px-5 py-3">Campaign</th>
                 <th className="px-5 py-3">Leads</th>
                 <th className="px-5 py-3">Calls</th>
+                <th className="px-5 py-3">Connected</th>
                 <th className="px-5 py-3">Interested</th>
                 <th className="px-5 py-3 text-right">Converted</th>
+                <th className="px-5 py-3 text-right">Rate</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-lilac/40">
@@ -1670,11 +2000,15 @@ function ConversionTab({ perf }) {
                   <td className="whitespace-nowrap px-5 py-3 font-semibold text-brand-ink">{s.label}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-brand-ink/70">{s.leads}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-brand-ink/70">{s.calls}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-brand-ink/70">{s.connected}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-brand-ink/70">{s.interested}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-right">
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
                       <Award size={10} /> {s.value}
                     </span>
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-3 text-right">
+                    <span className="font-mono text-[11px] font-bold text-brand-purple">{s.rate}%</span>
                   </td>
                 </tr>
               ))}
@@ -1841,38 +2175,79 @@ function DailyTab({ perf, bestDay }) {
 }
 
 /* ================================================================
+   EXPORT MODAL
+   ================================================================ */
+function ExportModal({ perf, range, onClose, onExported }) {
+  const rangeLabel = RANGE_OPTIONS.find((o) => o.value === range)?.label || 'This period';
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-panel">
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white">
+              <Download size={18} />
+            </div>
+            <div>
+              <h3 className="font-display text-lg font-semibold text-brand-ink">Export Report</h3>
+              <p className="text-xs text-brand-ink/50">{rangeLabel} · {perf.agentName}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-ink/50">
+            <Info size={10} /> Report includes
+          </p>
+          <ul className="space-y-1 text-[11px] text-brand-ink/70">
+            <li>✓ Leads, Calls, Follow-Ups, Conversions</li>
+            <li>✓ Target vs Actual progress</li>
+            <li>✓ Daily activity breakdown</li>
+            <li>✓ Campaign performance</li>
+            <li>✓ Personal insights</li>
+          </ul>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button
+            onClick={() => onExported('pdf')}
+            className="flex flex-col items-center gap-1 rounded-xl border border-brand-lilac bg-white py-3 text-[11px] font-bold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
+          >
+            <Eye size={16} className="text-brand-magenta" />
+            PDF Report
+          </button>
+          <button
+            onClick={() => onExported('csv')}
+            className="flex flex-col items-center gap-1 rounded-xl border border-brand-lilac bg-white py-3 text-[11px] font-bold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
+          >
+            <FileAudio size={16} className="text-brand-magenta" />
+            CSV / Excel
+          </button>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="mt-4 w-full rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
    REUSABLE CARDS
    ================================================================ */
 function StatBig({ label, value, icon: Icon, color = 'purple', sub, onClick }) {
   const themes = {
-    purple: {
-      border: 'border-violet-200',
-      bg: 'from-violet-50 to-white',
-      iconBg: 'bg-violet-100 text-brand-purple',
-      bar: 'from-brand-purple to-brand-magenta',
-      valueColor: 'text-brand-purple',
-    },
-    emerald: {
-      border: 'border-emerald-200',
-      bg: 'from-emerald-50 to-white',
-      iconBg: 'bg-emerald-100 text-emerald-600',
-      bar: 'from-emerald-500 to-emerald-400',
-      valueColor: 'text-emerald-600',
-    },
-    amber: {
-      border: 'border-amber-200',
-      bg: 'from-amber-50 to-white',
-      iconBg: 'bg-amber-100 text-amber-600',
-      bar: 'from-amber-500 to-orange-400',
-      valueColor: 'text-amber-600',
-    },
-    rose: {
-      border: 'border-rose-200',
-      bg: 'from-rose-50 to-white',
-      iconBg: 'bg-rose-100 text-brand-magenta',
-      bar: 'from-brand-magenta to-brand-purple',
-      valueColor: 'text-brand-magenta',
-    },
+    purple:  { border: 'border-violet-200',  bg: 'from-violet-50 to-white', iconBg: 'bg-violet-100 text-brand-purple', bar: 'from-brand-purple to-brand-magenta', valueColor: 'text-brand-purple' },
+    emerald: { border: 'border-emerald-200', bg: 'from-emerald-50 to-white', iconBg: 'bg-emerald-100 text-emerald-600', bar: 'from-emerald-500 to-emerald-400',     valueColor: 'text-emerald-600' },
+    amber:   { border: 'border-amber-200',   bg: 'from-amber-50 to-white',   iconBg: 'bg-amber-100 text-amber-600',     bar: 'from-amber-500 to-orange-400',         valueColor: 'text-amber-600' },
+    rose:    { border: 'border-rose-200',    bg: 'from-rose-50 to-white',    iconBg: 'bg-rose-100 text-brand-magenta',  bar: 'from-brand-magenta to-brand-purple',   valueColor: 'text-brand-magenta' },
   };
   const t = themes[color] || themes.purple;
   const Tag = onClick ? 'button' : 'div';
@@ -2008,7 +2383,7 @@ function useAnimatedCount(target, duration = 600) {
   return display.toLocaleString();
 }
 
-function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp, delay = 0 }) {
+function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp, delay = 0, onClick }) {
   const numeric = typeof value === 'number' ? value : 0;
   const animated = useAnimatedCount(numeric);
   const display = typeof value === 'number' ? animated : value;
@@ -2052,11 +2427,13 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp
     },
   };
   const t = themes[color] || themes.purple;
+  const Tag = onClick ? 'button' : 'div';
 
   return (
-    <div
+    <Tag
+      onClick={onClick}
       style={{ animationDelay: `${delay}ms` }}
-      className={`group relative overflow-hidden rounded-2xl border-2 bg-white p-4 shadow-sm transition-all duration-500 hover:-translate-y-1 animate-fade-slide-in ${t.border} ${t.shadow}`}
+      className={`group relative overflow-hidden rounded-2xl border-2 bg-white p-4 text-left shadow-sm transition-all duration-500 hover:-translate-y-1 animate-fade-slide-in ${t.border} ${t.shadow} ${onClick ? 'cursor-pointer' : ''}`}
     >
       <span className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${t.bg} opacity-0 transition-opacity duration-500 group-hover:opacity-100`} />
       <span className={`absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${t.bar} transition-transform duration-500 group-hover:scale-x-100`} />
@@ -2082,6 +2459,12 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp
         <p className="mt-0.5 text-xs font-semibold text-brand-ink/70">{label}</p>
         {sub && <p className="mt-0.5 text-[10px] text-brand-ink/40">{sub}</p>}
       </div>
-    </div>
+
+      {onClick && (
+        <span className="absolute bottom-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-brand-magenta opacity-0 transition-opacity group-hover:opacity-100">
+          <ChevronRight size={12} />
+        </span>
+      )}
+    </Tag>
   );
 }

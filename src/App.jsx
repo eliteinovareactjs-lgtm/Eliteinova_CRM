@@ -10,6 +10,7 @@ import Login from './pages/Login';
 import SuperAdminLayout from './components/superadmin/SuperAdminLayout';
 import AdminLayout from './components/admin/AdminLayout';
 import AgentLayout from './components/agent/AgentLayout';
+import MarketingLayout from './components/marketing/MarketingLayout';
 
 // ==================== SUPER ADMIN PAGES ====================
 import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
@@ -62,6 +63,19 @@ import AgentCallRecords from './pages/agent/CallRecords';
 import AgentSearch from './pages/agent/Search';
 import AgentPerformance from './pages/agent/Performance';
 import AgentAccount from './pages/agent/Account';
+
+// ==================== MARKETING EXECUTIVE PAGES ====================
+import MarketingDashboard from './pages/marketing/MarketingDashboard';
+import MarketingCampaigns from './pages/marketing/Campaigns';
+import MarketingLeadGeneration from './pages/marketing/LeadGeneration';
+import MarketingLeadSources from './pages/marketing/LeadSources';
+import MarketingLeadHandover from './pages/marketing/LeadHandover';
+import MarketingSocialMedia from './pages/marketing/SocialMedia';
+import MarketingCampaignPerformance from './pages/marketing/CampaignPerformance';
+import MarketingTasks from './pages/marketing/MarketingTasks';
+import MarketingCommunication from './pages/marketing/MarketingCommunication';
+import MarketingReports from './pages/marketing/MarketingReports';
+import MarketingAccount from './pages/marketing/MyAccount';
 
 export default function App() {
   return (
@@ -153,6 +167,28 @@ export default function App() {
             <Route path="performance"   element={<AgentPerformance />} />
             <Route path="account"       element={<AgentAccount />} />
 
+          </Route>
+
+          <Route
+            path="/marketing"
+            element={
+              <ProtectedRoute allow={['marketing', 'admin']}>
+                <MarketingLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/marketing/dashboard" replace />} />
+            <Route path="dashboard"     element={<MarketingDashboard />} />
+            <Route path="campaigns"     element={<MarketingCampaigns />} />
+            <Route path="leads"         element={<MarketingLeadGeneration />} />
+            <Route path="sources"       element={<MarketingLeadSources />} />
+            <Route path="handover"      element={<MarketingLeadHandover />} />
+            <Route path="social-media"  element={<MarketingSocialMedia />} />
+            <Route path="performance"   element={<MarketingCampaignPerformance />} />
+            <Route path="tasks"         element={<MarketingTasks />} />
+            <Route path="communication" element={<MarketingCommunication />} />
+            <Route path="reports"       element={<MarketingReports />} />
+            <Route path="account"       element={<MarketingAccount />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/login" replace />} />

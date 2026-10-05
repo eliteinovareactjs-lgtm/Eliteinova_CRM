@@ -1,24 +1,23 @@
 // src/pages/agent/CallRecords.jsx
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneCall,
-  Clock, User, Mic, MicOff, Play, Pause, X, Headphones, Search,
+  Clock, User, Mic, MicOff, Play, Pause, X,
   ChevronDown, ChevronRight, ChevronUp, Volume2, VolumeX,
   PauseCircle, PlayCircle, ArrowRightLeft, PhoneOff, FileAudio,
   Download, Calendar, StickyNote, CheckCircle2, AlertCircle,
-  ListFilter, Inbox, History, Tag, TrendingUp, UserPlus, UserCheck,
+  ListFilter, Inbox, History, Tag, UserPlus, UserCheck,
   Sparkles, Zap, AlertTriangle, Timer, Flame, MessageCircle,
-  Building2, Briefcase, MapPin, Layers, MessageSquare, Mail, Star,
-  PhoneForwarded, Radio, CircleDot, ShieldCheck, BadgeCheck,
-  ClipboardList, Target, Repeat, Eye, Edit3, Ban, MoreVertical,
-  ArrowUpRight, ArrowDownRight, SkipBack, SkipForward, Users,
-  CheckSquare, Square, RotateCcw, SlidersHorizontal, CalendarClock,
-  Sun, Sunrise, CheckCheck, XCircle, Volume, Gauge, TrendingDown,
-  Coffee, Send, Forward, Trash2,
+  Building2, MapPin, Layers, MessageSquare,
+  Radio, CircleDot,
+  ClipboardList, Target, Repeat, Eye, Edit3, Ban,
+  ArrowUpRight, Users, CheckSquare, Square, RotateCcw,
+  SlidersHorizontal, CalendarClock, Sun, CheckCheck, XCircle,
+  Send, IndianRupee, ExternalLink, Info,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { LEADS, CALLS } from '../../data/mockData';
+import { LEADS } from '../../data/mockData';
 
 /* ================================================================
    CONSTANTS
@@ -27,7 +26,6 @@ const TABS = [
   { key: 'all',      label: 'All Calls', icon: PhoneCall },
   { key: 'inbound',  label: 'Inbound',   icon: PhoneIncoming },
   { key: 'outbound', label: 'Outbound',  icon: PhoneOutgoing },
-  { key: 'missed',   label: 'Missed',    icon: PhoneMissed, live: true },
 ];
 
 const DISPOSITIONS = [
@@ -43,6 +41,21 @@ const PRIMARY_DISPOSITIONS = [
   { key: 'No Answer',      tone: 'slate' },
   { key: 'Converted',      tone: 'emerald' },
   { key: 'Not Interested', tone: 'slate' },
+];
+
+const CALL_PURPOSES = [
+  'New Enquiry', 'Follow-Up', 'Callback', 'Pricing', 'Product Enquiry',
+  'Site Visit', 'Payment', 'Document', 'Support', 'Renewal',
+  'Campaign Call', 'Other',
+];
+
+const RETRY_PRESETS = [
+  { label: '15 minutes', value: 15 },
+  { label: '30 minutes', value: 30 },
+  { label: '1 hour',     value: 60 },
+  { label: 'Later today', value: 180 },
+  { label: 'Tomorrow',   value: 24 * 60 },
+  { label: 'Next week',  value: 7 * 24 * 60 },
 ];
 
 const DATE_RANGES = [
@@ -65,22 +78,10 @@ const SORT_OPTIONS = [
   { value: 'converted',   label: 'Converted First' },
 ];
 
-const QUICK_FILTERS = [
-  { key: 'all',        label: 'All',         icon: ListFilter,   tone: 'purple' },
-  { key: 'today',      label: 'Today',       icon: Sun,          tone: 'purple' },
-  { key: 'connected',  label: 'Connected',   icon: CheckCircle2, tone: 'emerald' },
-  { key: 'missed',     label: 'Missed',      icon: PhoneMissed,  tone: 'rose' },
-  { key: 'callback',   label: 'Callback',    icon: Repeat,       tone: 'amber' },
-  { key: 'interested', label: 'Interested',  icon: Flame,        tone: 'rose' },
-  { key: 'converted',  label: 'Converted',   icon: CheckCheck,   tone: 'emerald' },
-  { key: 'noanswer',   label: 'No Answer',   icon: XCircle,      tone: 'slate' },
-];
-
-const CAMPAIGN_OPTIONS    = ['All', 'Q3 Outreach', 'Diwali Promo', 'Referral Drive', 'Festive Offers'];
-/* ⬅️ Priority values only — no more Hot / Warm / Cold */
-const PRIORITY_OPTIONS    = ['All', 'High', 'Medium', 'Low'];
-const STATUS_OPTIONS      = ['All', 'connected', 'missed', 'failed', 'ringing'];
-const CALL_TYPE_OPTIONS   = ['All', 'inbound', 'outbound'];
+const CAMPAIGN_OPTIONS  = ['All', 'Q3 Outreach', 'Diwali Promo', 'Referral Drive', 'Festive Offers'];
+const PRIORITY_OPTIONS  = ['All', 'High', 'Medium', 'Low'];
+const STATUS_FILTER_OPTIONS = ['All', 'connected', 'missed', 'failed', 'ringing'];
+const CALL_TYPE_OPTIONS = ['All', 'inbound', 'outbound'];
 
 const STATUS_STYLES = {
   connected: 'bg-emerald-100 text-emerald-600',
@@ -89,13 +90,6 @@ const STATUS_STYLES = {
   failed:    'bg-slate-100 text-slate-500',
 };
 
-const PRIORITY_STYLES = {
-  High:   'border-rose-200 bg-rose-50 text-rose-600',
-  Medium: 'border-amber-200 bg-amber-50 text-amber-600',
-  Low:    'border-emerald-200 bg-emerald-50 text-emerald-600',
-};
-
-/* ⬅️ Single style map for the priority pill (was previously leadStage) */
 const PRIORITY_PILL_STYLES = {
   High:   'bg-rose-100 text-rose-600',
   Medium: 'bg-amber-100 text-amber-700',
@@ -108,15 +102,28 @@ const PRIORITY_PILL_STYLES = {
 const ymd = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-const todayYMD     = () => ymd(new Date());
-const yesterdayYMD = () => ymd(new Date(Date.now() - 86400000));
-const weekAgoYMD   = () => ymd(new Date(Date.now() - 7 * 86400000));
-const monthAgoYMD  = () => ymd(new Date(Date.now() - 30 * 86400000));
+const todayYMD = () => ymd(new Date());
+const yesterdayYMD = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return ymd(d);
+};
+const weekAgoYMD = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return ymd(d);
+};
+const monthAgoYMD = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return ymd(d);
+};
 
 const parseDuration = (s) => {
   if (!s || s === '0:00') return 0;
   const [m, sec] = String(s).split(':').map(Number);
-  return (m || 0) * 60 + (sec || 0);
+  if (!Number.isFinite(m) && !Number.isFinite(sec)) return 0;
+  return (Number.isFinite(m) ? m : 0) * 60 + (Number.isFinite(sec) ? sec : 0);
 };
 
 const timeAgo = (iso) => {
@@ -150,41 +157,97 @@ const inDateRange = (iso, range) => {
   return true;
 };
 
+const getNextContactState = (record) => {
+  if (!record.followUpDate) return { state: 'none', label: 'No follow-up', tone: 'slate' };
+  const datePart = record.followUpDate.split(' · ')[0];
+  const timePart = record.followUpDate.split(' · ')[1] || '10:00';
+  const target = new Date(`${datePart}T${timePart}:00`);
+  const diffMin = Math.round((target.getTime() - Date.now()) / 60000);
+
+  if (diffMin < -1) return { state: 'overdue', label: `${Math.abs(diffMin)}m overdue`, tone: 'rose' };
+  if (diffMin <= 60) return { state: 'due-soon', label: `In ${diffMin}m`, tone: 'amber' };
+  if (diffMin < 24 * 60) return { state: 'today', label: `Today · ${timePart}`, tone: 'emerald' };
+  return { state: 'future', label: record.followUpDate, tone: 'purple' };
+};
+
 /* ================================================================
    NEXT ACTION HELPER
    ================================================================ */
 function getNextAction(record) {
   if (record.status === 'missed' && record.type === 'inbound') {
-    return { label: 'Call Back', tone: 'rose', icon: PhoneCall, hint: 'Missed call' };
+    return {
+      label: 'Call Back', tone: 'rose', icon: PhoneCall,
+      reason: `Missed incoming call from ${record.customer}.`,
+      primary: 'Call Now',
+    };
   }
   if (record.status === 'missed') {
-    return { label: 'Retry', tone: 'rose', icon: Repeat, hint: 'Missed call' };
+    return {
+      label: 'Retry', tone: 'rose', icon: Repeat,
+      reason: `Missed outbound call. ${record.retryCount || 0} previous attempts.`,
+      primary: 'Retry',
+    };
   }
   if (record.outcome === 'No Answer' || record.outcome === 'Busy') {
-    return { label: 'Retry', tone: 'amber', icon: Repeat, hint: 'No answer' };
+    const count = record.retryCount || 0;
+    return {
+      label: 'Retry', tone: 'amber', icon: Repeat,
+      reason: count >= 2
+        ? `Customer not reached after ${count} attempts.`
+        : `Previous attempt was ${record.outcome.toLowerCase()}.`,
+      primary: 'Retry',
+    };
   }
   if (record.outcome === 'Interested') {
-    return { label: 'Schedule Follow-Up', tone: 'rose', icon: Calendar, hint: 'Interested lead' };
+    return {
+      label: 'Schedule Follow-Up', tone: 'rose', icon: Calendar,
+      reason: `Customer is interested — schedule next contact.`,
+      primary: 'Schedule',
+    };
   }
   if (record.outcome === 'Call Back') {
-    return { label: 'Schedule Callback', tone: 'amber', icon: CalendarClock, hint: 'Callback requested' };
+    return {
+      label: 'Schedule Callback', tone: 'amber', icon: CalendarClock,
+      reason: `Customer requested a callback.`,
+      primary: 'Schedule',
+    };
   }
   if (record.outcome === 'Follow-Up Required') {
-    return { label: 'Follow-Up Due', tone: 'amber', icon: CalendarClock, hint: 'Follow-up flagged' };
+    return {
+      label: 'Follow-Up Due', tone: 'amber', icon: CalendarClock,
+      reason: `Follow-up was flagged during this call.`,
+      primary: 'Follow Up',
+    };
   }
   if (record.outcome === 'Customer Requested Information') {
-    return { label: 'Send Information', tone: 'purple', icon: Send, hint: 'Info requested' };
+    return {
+      label: 'Send Information', tone: 'purple', icon: Send,
+      reason: `Customer requested additional information.`,
+      primary: 'Send',
+    };
   }
   if (record.outcome === 'Converted') {
-    return { label: 'View Customer', tone: 'emerald', icon: UserCheck, hint: 'Converted' };
+    return {
+      label: 'View Customer', tone: 'emerald', icon: UserCheck,
+      reason: `Deal closed — view the customer profile.`,
+      primary: 'View',
+    };
   }
   if (record.outcome === 'Not Interested') {
-    return { label: 'Close Lead', tone: 'slate', icon: XCircle, hint: 'Not interested' };
+    return {
+      label: 'Close Lead', tone: 'slate', icon: XCircle,
+      reason: `Customer is not interested in the offer.`,
+      primary: 'Close',
+    };
   }
   if (record.outcome === 'Wrong Number') {
-    return { label: 'Update Contact', tone: 'slate', icon: Edit3, hint: 'Wrong number' };
+    return {
+      label: 'Update Contact', tone: 'slate', icon: Edit3,
+      reason: `Number is incorrect — update contact info.`,
+      primary: 'Update',
+    };
   }
-  return { label: 'View Details', tone: 'purple', icon: Eye, hint: '' };
+  return { label: 'View Details', tone: 'purple', icon: Eye, reason: '', primary: '—' };
 }
 
 const NEXT_ACTION_TONES = {
@@ -197,8 +260,6 @@ const NEXT_ACTION_TONES = {
 
 /* ================================================================
    DEMO DATA
-   ⬅️ Every record now uses priority: High | Medium | Low
-      leadStage has been removed entirely.
    ================================================================ */
 const buildDemoCallRecords = (agentName, websiteId) => {
   const now = Date.now();
@@ -216,6 +277,17 @@ const buildDemoCallRecords = (agentName, websiteId) => {
       at: minsAgo(12),
       recording: true,
       retryCount: 0,
+      leadId: 'LD-1024', leadStage: 'Hot',
+      budget: '₹45-55L', location: 'Bangalore',
+      purpose: 'Pricing',
+      preferredContact: '10 AM – 12 PM · Weekdays',
+      structuredNotes: {
+        need: '2BHK apartment',
+        budget: '₹45-55L',
+        requirement: 'Weekend site visit',
+        concern: 'Price sensitivity',
+        nextAction: 'Schedule follow-up',
+      },
     },
     {
       id: 'cr-2', agentName, projectId: websiteId,
@@ -228,6 +300,10 @@ const buildDemoCallRecords = (agentName, websiteId) => {
       at: minsAgo(48),
       recording: true,
       retryCount: 0,
+      leadId: 'LD-1025', leadStage: 'Warm',
+      budget: '₹65L', location: 'Mumbai',
+      purpose: 'Product Enquiry',
+      preferredContact: '2 PM – 5 PM',
     },
     {
       id: 'cr-3', agentName, projectId: websiteId,
@@ -240,6 +316,9 @@ const buildDemoCallRecords = (agentName, websiteId) => {
       at: minsAgo(95),
       recording: false,
       retryCount: 2,
+      leadId: 'LD-1026', leadStage: 'Cold',
+      budget: '₹30L', location: 'Pune',
+      purpose: 'Follow-Up',
       retryHistory: [
         { at: minsAgo(95), outcome: 'No Answer' },
         { at: minsAgo(180), outcome: 'No Answer' },
@@ -256,6 +335,8 @@ const buildDemoCallRecords = (agentName, websiteId) => {
       at: minsAgo(180),
       recording: false,
       retryCount: 0,
+      leadId: 'LD-1027', leadStage: 'Warm',
+      purpose: 'New Enquiry',
     },
     {
       id: 'cr-5', agentName, projectId: websiteId,
@@ -268,6 +349,11 @@ const buildDemoCallRecords = (agentName, websiteId) => {
       at: minsAgo(320),
       recording: true,
       retryCount: 0,
+      leadId: 'LD-1028', leadStage: 'Converted',
+      budget: '₹80L', location: 'Hyderabad',
+      purpose: 'Payment',
+      followUpDate: `${ymd(new Date(now + 86400000))} · 11:00`,
+      followUpNotes: 'Confirm documentation',
     },
     {
       id: 'cr-6', agentName, projectId: websiteId,
@@ -280,6 +366,10 @@ const buildDemoCallRecords = (agentName, websiteId) => {
       at: minsAgo(400),
       recording: true,
       retryCount: 0,
+      leadId: 'LD-1029', leadStage: 'Warm',
+      budget: '₹40L', location: 'Chennai',
+      purpose: 'Document',
+      followUpDate: `${todayYMD()} · 17:30`,
     },
     {
       id: 'cr-7', agentName, projectId: websiteId,
@@ -292,6 +382,9 @@ const buildDemoCallRecords = (agentName, websiteId) => {
       at: minsAgo(520),
       recording: true,
       retryCount: 0,
+      leadId: 'LD-1030', leadStage: 'Cold',
+      budget: '₹20L', location: 'Delhi',
+      purpose: 'Pricing',
     },
     {
       id: 'cr-8', agentName, projectId: websiteId,
@@ -304,6 +397,23 @@ const buildDemoCallRecords = (agentName, websiteId) => {
       at: minsAgo(600),
       recording: false,
       retryCount: 0,
+      leadId: 'LD-1031', leadStage: 'Warm',
+      purpose: 'New Enquiry',
+    },
+    {
+      id: 'cr-9', agentName, projectId: websiteId,
+      customer: 'Karan Patel', mobile: '9876543218',
+      type: 'outbound', status: 'connected',
+      duration: '5:10', outcome: 'Customer Requested Information',
+      notes: 'Requested price sheet and floor plans.',
+      campaign: 'Q3 Outreach', priority: 'High',
+      source: 'Website',
+      at: minsAgo(720),
+      recording: true,
+      retryCount: 0,
+      leadId: 'LD-1032', leadStage: 'Hot',
+      budget: '₹55L', location: 'Ahmedabad',
+      purpose: 'Document',
     },
   ];
 };
@@ -327,7 +437,7 @@ export default function CallRecords() {
     status: 'All',
     type: 'All',
     campaign: 'All',
-    priority: 'All',   /* ⬅️ was leadStage */
+    priority: 'All',
     durationMin: '',
     dateFrom: '',
     dateTo: '',
@@ -339,9 +449,12 @@ export default function CallRecords() {
   const [showIncomingCall, setShowIncomingCall] = useState(null);
   const [showNewLead, setShowNewLead]           = useState(null);
   const [showFollowUp, setShowFollowUp]         = useState(null);
+  const [showRetry, setShowRetry]               = useState(null);
   const [toast, setToast]                       = useState(null);
   const [expandedCustomer, setExpandedCustomer] = useState(null);
   const [selectedIds, setSelectedIds]           = useState([]);
+
+  const toastTimer = useRef(null);
 
   const [records, setRecords] = useState(() =>
     buildDemoCallRecords(user?.name || 'Agent', activeWebsiteId)
@@ -351,9 +464,16 @@ export default function CallRecords() {
     setRecords(buildDemoCallRecords(user?.name || 'Agent', activeWebsiteId));
   }, [user?.name, activeWebsiteId]);
 
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
+
   const showToast = (msg, type = 'success') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 2600);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
   };
 
   /* ---------- SUMMARY ---------- */
@@ -383,11 +503,17 @@ export default function CallRecords() {
     const callbacks = records.filter((r) => r.outcome === 'Call Back' || r.outcome === 'Follow-Up Required').length;
     const interested = records.filter((r) => r.outcome === 'Interested').length;
     const noAnswer = records.filter((r) => r.outcome === 'No Answer').length;
+    const infoRequested = records.filter((r) => r.outcome === 'Customer Requested Information').length;
+    const failed = records.filter((r) => r.status === 'failed').length;
+    const converted = records.filter((r) => r.outcome === 'Converted').length;
     return [
-      { key: 'missed',     label: 'Missed Calls',       count: missed,     tone: 'rose',    icon: PhoneMissed },
-      { key: 'callbacks',  label: 'Callbacks Due',      count: callbacks,  tone: 'amber',   icon: CalendarClock },
-      { key: 'interested', label: 'Interested',         count: interested, tone: 'emerald', icon: Flame },
-      { key: 'noanswer',   label: 'No Answer Retries',  count: noAnswer,   tone: 'slate',   icon: Repeat },
+      { key: 'missed',      label: 'Missed Calls',        count: missed,        tone: 'rose',    icon: PhoneMissed },
+      { key: 'callbacks',   label: 'Callbacks Due',       count: callbacks,     tone: 'amber',   icon: CalendarClock },
+      { key: 'interested',  label: 'Interested Leads',    count: interested,    tone: 'emerald', icon: Flame },
+      { key: 'noanswer',    label: 'No Answer Retries',   count: noAnswer,      tone: 'slate',   icon: Repeat },
+      { key: 'inforequest', label: 'Info Requested',      count: infoRequested, tone: 'purple',  icon: Send },
+      { key: 'failed',      label: 'Failed Calls',        count: failed,        tone: 'rose',    icon: XCircle },
+      { key: 'converted',   label: 'Converted',           count: converted,     tone: 'emerald', icon: CheckCheck },
     ];
   }, [records]);
 
@@ -397,7 +523,6 @@ export default function CallRecords() {
 
     if (activeTab === 'inbound')  list = list.filter((r) => r.type === 'inbound');
     if (activeTab === 'outbound') list = list.filter((r) => r.type === 'outbound');
-    if (activeTab === 'missed')   list = list.filter((r) => r.status === 'missed');
 
     if (quickFilter === 'today')      list = list.filter((r) => inDateRange(r.at, 'today'));
     if (quickFilter === 'connected')  list = list.filter((r) => r.status === 'connected');
@@ -406,6 +531,9 @@ export default function CallRecords() {
     if (quickFilter === 'interested') list = list.filter((r) => r.outcome === 'Interested');
     if (quickFilter === 'converted')  list = list.filter((r) => r.outcome === 'Converted');
     if (quickFilter === 'noanswer')   list = list.filter((r) => r.outcome === 'No Answer');
+    if (quickFilter === 'inforequest')list = list.filter((r) => r.outcome === 'Customer Requested Information');
+    if (quickFilter === 'failed')     list = list.filter((r) => r.status === 'failed');
+    if (quickFilter === 'callbacks')  list = list.filter((r) => r.outcome === 'Call Back' || r.outcome === 'Follow-Up Required');
 
     if (dateRange !== 'all' && dateRange !== 'custom') {
       list = list.filter((r) => inDateRange(r.at, dateRange));
@@ -434,19 +562,23 @@ export default function CallRecords() {
     if (advancedFilters.campaign !== 'All') {
       list = list.filter((r) => r.campaign === advancedFilters.campaign);
     }
-    /* ⬅️ Priority filter now reads r.priority */
     if (advancedFilters.priority !== 'All') {
       list = list.filter((r) => r.priority === advancedFilters.priority);
     }
     if (advancedFilters.durationMin) {
-      const minSec = parseInt(advancedFilters.durationMin, 10) * 60;
-      list = list.filter((r) => parseDuration(r.duration) >= minSec);
+      const min = parseInt(advancedFilters.durationMin, 10);
+      if (Number.isFinite(min) && min > 0) {
+        const minSec = min * 60;
+        list = list.filter((r) => parseDuration(r.duration) >= minSec);
+      }
     }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter((r) =>
-        `${r.customer} ${r.mobile} ${r.outcome || ''} ${r.notes || ''} ${r.campaign || ''}`.toLowerCase().includes(q)
+        `${r.customer} ${r.mobile} ${r.outcome || ''} ${r.notes || ''} ${r.campaign || ''} ${r.leadId || ''}`
+          .toLowerCase()
+          .includes(q)
       );
     }
 
@@ -493,22 +625,32 @@ export default function CallRecords() {
 
   /* ---------- CALL HANDLERS ---------- */
   const handleStartCall = (target) => {
+    const mobile = target.mobile || target.phone;
+    if (!mobile) {
+      showToast('No phone number available', 'error');
+      return;
+    }
     setInCall({
       name: target.name || target.customer || 'Unknown',
-      mobile: target.mobile || target.phone,
+      mobile,
       leadId: target.leadId || target.id,
       direction: 'outbound',
       context: {
         priority: target.priority || '—',
         campaign: target.campaign || '—',
         source: target.source || '—',
-        lastContact: target.lastContact || '—',
+        lastContact: target.at ? formatDateTime(target.at) : '—',
+        lastOutcome: target.outcome || '—',
+        previousCalls: records.filter(
+          (r) => r.customer === (target.customer || target.name)
+        ).length,
       },
       startedAt: Date.now(),
     });
   };
 
   const handleCallEnd = (payload) => {
+    if (!inCall) return;
     const entry = {
       id: `cr-${Date.now()}`,
       agentName: user?.name,
@@ -521,23 +663,29 @@ export default function CallRecords() {
           ? 'missed'
           : 'connected',
       duration: payload.duration,
-      outcome: payload.disposition,
+      outcome: payload.disposition || 'Connected',
       notes: payload.notes,
       at: new Date().toISOString(),
       recording: payload.recording,
       retryCount: 0,
+      purpose: payload.purpose,
     };
     setRecords((prev) => [entry, ...prev]);
     setInCall(null);
     setShowDisposition(entry);
   };
 
-  const handleSaveDisposition = (record, disposition, notes, scheduleFollowUp) => {
+  const handleSaveDisposition = (record, disposition, notes, scheduleFollowUp, structuredNotes, purpose) => {
     setRecords((prev) =>
-      prev.map((r) => (r.id === record.id ? { ...r, outcome: disposition, notes } : r))
+      prev.map((r) =>
+        r.id === record.id
+          ? { ...r, outcome: disposition, notes, structuredNotes, purpose: purpose || r.purpose }
+          : r
+      )
     );
     setShowDisposition(null);
     if (scheduleFollowUp) {
+      showToast('Disposition saved — schedule follow-up');
       setShowFollowUp(record);
     } else {
       showToast('Call disposition saved');
@@ -548,27 +696,51 @@ export default function CallRecords() {
     setRecords((prev) =>
       prev.map((r) =>
         r.id === record.id
-          ? { ...r, followUpDate: `${date}${time ? ` · ${time}` : ''}`, followUpNotes: notes }
+          ? { ...r, followUpDate: `${date} · ${time}`, followUpNotes: notes }
           : r
       )
     );
     setShowFollowUp(null);
-    showToast(`Follow-up scheduled for ${date}${time ? ` at ${time}` : ''}`);
+    showToast(`Follow-up scheduled for ${date} at ${time}`);
+  };
+
+  const handleRetry = (record, minutes) => {
+    const due = new Date(Date.now() + minutes * 60000);
+    const dateStr = ymd(due);
+    const timeStr = `${String(due.getHours()).padStart(2, '0')}:${String(due.getMinutes()).padStart(2, '0')}`;
+    setRecords((prev) =>
+      prev.map((r) =>
+        r.id === record.id
+          ? {
+              ...r,
+              followUpDate: `${dateStr} · ${timeStr}`,
+              followUpNotes: `Auto-retry scheduled after ${r.outcome}`,
+              retryCount: (r.retryCount || 0) + 1,
+              retryHistory: [
+                ...(r.retryHistory || []),
+                { at: new Date().toISOString(), outcome: 'Scheduled retry' },
+              ],
+            }
+          : r
+      )
+    );
+    setShowRetry(null);
+    showToast(`Retry scheduled in ${minutes} min`);
   };
 
   /* ---------- INBOUND SIMULATION ---------- */
   const simulateIncomingCall = () => {
-    const existingLeads = (LEADS || []).slice(0, 3);
-    const isExisting = Math.random() > 0.5;
+    const existingLeads = (LEADS || []).filter((l) => l && l.name && l.mobile).slice(0, 3);
+    const isExisting = Math.random() > 0.5 && existingLeads.length > 0;
 
-    if (isExisting && existingLeads.length) {
+    if (isExisting) {
       const lead = existingLeads[Math.floor(Math.random() * existingLeads.length)];
       setShowIncomingCall({
         customer: lead.name,
         mobile: lead.mobile,
         isExisting: true,
-        /* ⬅️ Priority instead of leadStage */
         priority: ['High', 'Medium', 'Low'][Math.floor(Math.random() * 3)],
+        leadStage: ['Hot', 'Warm', 'Cold'][Math.floor(Math.random() * 3)],
         campaign: 'Q3 Outreach',
         previousCalls: 2 + Math.floor(Math.random() * 3),
         lastOutcome: 'Interested',
@@ -594,6 +766,7 @@ export default function CallRecords() {
       direction: 'incoming',
       context: {
         priority: call.priority,
+        leadStage: call.leadStage,
         campaign: call.campaign,
         lastContact: 'Yesterday',
         previousCalls: call.previousCalls,
@@ -604,6 +777,7 @@ export default function CallRecords() {
   };
 
   const handleIncomingReject = () => {
+    if (!showIncomingCall) return;
     const call = showIncomingCall;
     setShowIncomingCall(null);
     setRecords((prev) => [
@@ -636,9 +810,9 @@ export default function CallRecords() {
       status: 'connected',
       duration: '0:00',
       outcome: 'Connected',
-      notes: `New lead created from incoming call. Source: ${data.source}`,
+      notes: data.notes || `New lead created from incoming call. Source: ${data.source}`,
       campaign: data.campaign,
-      priority: 'Medium',
+      priority: data.priority || 'Medium',
       at: new Date().toISOString(),
     };
     setRecords((prev) => [entry, ...prev]);
@@ -649,7 +823,7 @@ export default function CallRecords() {
       mobile: data.mobile,
       direction: 'incoming',
       context: {
-        priority: 'Medium',
+        priority: data.priority || 'Medium',
         campaign: data.campaign,
         source: data.source,
         lastContact: '—',
@@ -661,15 +835,35 @@ export default function CallRecords() {
     showToast(`New lead created: ${data.name}`);
   };
 
+  const handleNewLeadCancel = () => {
+    const call = showNewLead;
+    setShowNewLead(null);
+    if (!call) return;
+    setRecords((prev) => [
+      {
+        id: `cr-${Date.now()}`,
+        agentName: user?.name,
+        projectId: activeWebsiteId,
+        customer: call.customer || 'Unknown Caller',
+        mobile: call.mobile,
+        type: 'inbound',
+        status: 'missed',
+        duration: '0:00',
+        outcome: 'Missed',
+        notes: 'New lead creation cancelled',
+        at: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+    showToast('Call missed — lead not created', 'error');
+  };
+
   /* ---------- QUICK FILTER HANDLER ---------- */
   const pickQuickFilter = (key) => {
     if (key === 'missed') {
-      setActiveTab('missed');
-      setQuickFilter('all');
-      return;
-    }
-    if (activeTab === 'missed' && key !== 'missed') {
       setActiveTab('all');
+      setQuickFilter('missed');
+      return;
     }
     setQuickFilter(key);
   };
@@ -691,7 +885,7 @@ export default function CallRecords() {
 
   useEffect(() => {
     setSelectedIds([]);
-  }, [activeTab, quickFilter, dateRange, dispositionFilter]);
+  }, [activeTab, quickFilter, dateRange, dispositionFilter, advancedFilters, searchQuery, searchWithin]);
 
   /* ================================================================
      RENDER
@@ -735,67 +929,41 @@ export default function CallRecords() {
 
         {/* ================= KPI STRIP ================= */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <AnimatedStatCard label="All Calls"  value={summary.total}         sub="Lifetime records"        icon={PhoneCall}     color="purple"  delay={0} />
-          <AnimatedStatCard label="Connected"  value={summary.connected}     sub={`${summary.connectionRate}% rate`} icon={CheckCircle2} color="emerald" delay={40} />
-          <AnimatedStatCard label="Missed"     value={summary.missed}        sub="Needs callback"          icon={PhoneMissed}   color="rose"    delay={80} />
-          <AnimatedStatCard label="Callbacks"  value={summary.callbacks}     sub="Due today"               icon={CalendarClock} color="amber"   delay={120} />
-          <AnimatedStatCard label="Converted"  value={summary.converted}     sub="Won via calls"           icon={CheckCheck}    color="emerald" delay={160} />
+          <AnimatedStatCard label="All Calls"  value={summary.total}     sub="Lifetime records"        icon={PhoneCall}     color="purple"  delay={0} />
+          <AnimatedStatCard label="Connected"  value={summary.connected} sub={`${summary.connectionRate}% rate`} icon={CheckCircle2} color="emerald" delay={40} />
+          <AnimatedStatCard label="Missed"     value={summary.missed}    sub="Needs callback"          icon={PhoneMissed}   color="rose"    delay={80} />
+          <AnimatedStatCard label="Callbacks"  value={summary.callbacks} sub="Due today"               icon={CalendarClock} color="amber"   delay={120} />
+          <AnimatedStatCard label="Converted"  value={summary.converted} sub="Won via calls"           icon={CheckCheck}    color="emerald" delay={160} />
         </div>
 
-        {/* ================= NEEDS ATTENTION ================= */}
-        <NeedsAttention items={needsAttention} onPick={pickQuickFilter} />
+        {/* ================= MISSED CALL RECOVERY ================= */}
+        <MissedCallRecovery
+          records={records}
+          onCall={(r) => handleStartCall({ ...r, direction: 'outbound' })}
+          onRetry={(r) => setShowRetry(r)}
+          onFollowUp={(r) => setShowFollowUp(r)}
+          onView={(r) => setSelectedRecord(r)}
+        />
 
-        {/* ================= TABS ================= */}
-        <div className="card !p-2.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const active = activeTab === t.key;
-              const count =
-                t.key === 'all'      ? summary.total :
-                t.key === 'inbound'  ? summary.inbound :
-                t.key === 'outbound' ? summary.outbound :
-                                       summary.missed;
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  className={`group inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all duration-200 ${
-                    active
-                      ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)] scale-[1.02]'
-                      : 'text-brand-ink/60 hover:bg-brand-lilac/50 hover:text-brand-magenta'
-                  }`}
-                >
-                  <Icon size={13} />
-                  {t.label}
-                  {t.live && !active && count > 0 && (
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
-                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-rose-500" />
-                    </span>
-                  )}
-                  <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                    active ? 'bg-white/25 text-white' : 'bg-brand-lilac/70 text-brand-purple'
-                  }`}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ================= QUICK FILTERS ================= */}
-        <QuickFilters activeKey={quickFilter} onPick={pickQuickFilter} />
+        {/* ================= UNIFIED FILTER PANEL ================= */}
+        <UnifiedFilterPanel
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          quickFilter={quickFilter}
+          setQuickFilter={setQuickFilter}
+          summary={summary}
+          needsAttention={needsAttention}
+          pickQuickFilter={pickQuickFilter}
+        />
 
         {/* ================= SEARCH + FILTERS ================= */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-ink/40" />
+            <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-ink/40" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by customer, mobile, outcome…"
+              placeholder="Search by customer, mobile, lead ID, outcome…"
               className="w-full rounded-full border border-brand-lilac bg-white py-2.5 pl-11 pr-10 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
             />
             {searchQuery && (
@@ -870,7 +1038,7 @@ export default function CallRecords() {
         {/* ================= SEARCH WITHIN RESULTS ================= */}
         {filteredRecords.length > 0 && (
           <div className="relative">
-            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-ink/40" />
+            <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-ink/40" size={14} />
             <input
               value={searchWithin}
               onChange={(e) => setSearchWithin(e.target.value)}
@@ -891,9 +1059,12 @@ export default function CallRecords() {
         {/* ================= BULK BAR ================= */}
         {filteredRecords.length > 0 && selectedIds.length > 0 && (
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-brand-magenta/40 bg-brand-magenta/[0.06] px-4 py-2.5">
-            <span className="text-xs font-bold text-brand-magenta">
-              {selectedIds.length} selected
-            </span>
+            <button
+              onClick={toggleSelectAll}
+              className="text-xs font-bold text-brand-magenta hover:underline"
+            >
+              {selectedIds.length} selected {selectedIds.length === filteredRecords.length ? '· Unselect all' : '· Select all'}
+            </button>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => {
@@ -914,6 +1085,15 @@ export default function CallRecords() {
                 <Tag size={11} /> Add Tag
               </button>
               <button
+                onClick={() => {
+                  showToast(`Priority updated for ${selectedIds.length} calls`);
+                  setSelectedIds([]);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 py-1 text-[11px] font-semibold text-brand-ink hover:border-brand-magenta/40 hover:text-brand-magenta"
+              >
+                <Flame size={11} /> Change Priority
+              </button>
+              <button
                 onClick={() => setSelectedIds([])}
                 className="ml-2 text-[11px] font-semibold text-brand-ink/50 hover:text-brand-ink"
               >
@@ -925,14 +1105,17 @@ export default function CallRecords() {
 
         {/* ================= RECORDS LIST ================= */}
         {filteredRecords.length === 0 ? (
-          <EmptyState tab={activeTab} onReset={() => {
-            setSearchQuery('');
-            setSearchWithin('');
-            setQuickFilter('all');
-            setDateRange('all');
-            setDispositionFilter('all');
-            resetAdvancedFilters();
-          }} />
+          <EmptyState
+            tab={activeTab}
+            onReset={() => {
+              setSearchQuery('');
+              setSearchWithin('');
+              setQuickFilter('all');
+              setDateRange('all');
+              setDispositionFilter('all');
+              resetAdvancedFilters();
+            }}
+          />
         ) : (
           <div className="space-y-2">
             {filteredRecords.map((record) => (
@@ -942,13 +1125,18 @@ export default function CallRecords() {
                 selected={selectedIds.includes(record.id)}
                 expanded={expandedCustomer === record.customer}
                 onToggleSelect={() => toggleSelect(record.id)}
-                onToggleExpand={() => setExpandedCustomer(
-                  expandedCustomer === record.customer ? null : record.customer
+                onToggleExpand={() =>
+                  setExpandedCustomer(
+                    expandedCustomer === record.customer ? null : record.customer
+                  )
+                }
+                siblingRecords={records.filter(
+                  (r) => r.customer === record.customer && r.id !== record.id
                 )}
-                siblingRecords={records.filter((r) => r.customer === record.customer && r.id !== record.id)}
                 onView={() => setSelectedRecord(record)}
                 onCall={() => handleStartCall({ ...record, direction: 'outbound' })}
                 onFollowUp={() => setShowFollowUp(record)}
+                onRetry={() => setShowRetry(record)}
                 onViewLead={() => {
                   showToast(`Opening lead profile for ${record.customer}`);
                   navigate('/agent/leads', { state: { leadName: record.customer } });
@@ -962,7 +1150,9 @@ export default function CallRecords() {
         {selectedRecord && (
           <CallRecordDrawer
             record={selectedRecord}
-            siblingRecords={records.filter((r) => r.customer === selectedRecord.customer)}
+            siblingRecords={records.filter(
+              (r) => r.customer === selectedRecord.customer && r.id !== selectedRecord.id
+            )}
             onClose={() => setSelectedRecord(null)}
             onCall={() => {
               handleStartCall({
@@ -972,7 +1162,14 @@ export default function CallRecords() {
               });
               setSelectedRecord(null);
             }}
-            onFollowUp={() => { setShowFollowUp(selectedRecord); setSelectedRecord(null); }}
+            onFollowUp={() => {
+              setShowFollowUp(selectedRecord);
+              setSelectedRecord(null);
+            }}
+            onRetry={() => {
+              setShowRetry(selectedRecord);
+              setSelectedRecord(null);
+            }}
             onViewLead={() => {
               showToast(`Opening lead profile for ${selectedRecord.customer}`);
               setSelectedRecord(null);
@@ -992,7 +1189,7 @@ export default function CallRecords() {
         {showNewLead && (
           <NewLeadModal
             incomingCall={showNewLead}
-            onClose={() => setShowNewLead(null)}
+            onClose={handleNewLeadCancel}
             onCreate={handleCreateNewLead}
           />
         )}
@@ -1021,6 +1218,14 @@ export default function CallRecords() {
           />
         )}
 
+        {showRetry && (
+          <RetryModal
+            record={showRetry}
+            onClose={() => setShowRetry(null)}
+            onSave={handleRetry}
+          />
+        )}
+
         {toast && <Toast message={toast.msg} type={toast.type} />}
       </div>
     </div>
@@ -1028,65 +1233,51 @@ export default function CallRecords() {
 }
 
 /* ================================================================
-   NEEDS ATTENTION
+   Local Search icon wrapper (saves importing `Search` twice)
    ================================================================ */
-function NeedsAttention({ items, onPick }) {
-  const tones = {
-    rose:    { bg: 'bg-rose-50',    text: 'text-rose-600',    ring: 'ring-rose-200' },
-    amber:   { bg: 'bg-amber-50',   text: 'text-amber-700',   ring: 'ring-amber-200' },
-    emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', ring: 'ring-emerald-200' },
-    slate:   { bg: 'bg-slate-50',   text: 'text-slate-600',   ring: 'ring-slate-200' },
-  };
-
+function SearchIcon({ size = 16, className = '' }) {
   return (
-    <div className="card !p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card">
-          <Zap size={12} />
-        </span>
-        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-magenta">
-          Needs Attention
-        </p>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {items.map((item) => {
-          const Icon = item.icon;
-          const t = tones[item.tone] || tones.slate;
-          const isZero = item.count === 0;
-          return (
-            <button
-              key={item.key}
-              onClick={() => onPick(item.key)}
-              disabled={isZero}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all ${
-                isZero
-                  ? 'border-brand-lilac bg-white text-brand-ink/40 cursor-not-allowed'
-                  : 'border-brand-lilac bg-white text-brand-ink/70 hover:border-brand-magenta/40 hover:text-brand-magenta'
-              }`}
-            >
-              <span className={`flex h-5 w-5 items-center justify-center rounded-md ring-1 ${t.bg} ${t.text} ${t.ring}`}>
-                <Icon size={10} />
-              </span>
-              {item.label}
-              <span className={`rounded-full px-1.5 text-[10px] font-bold ${
-                isZero ? 'bg-brand-lilac/50 text-brand-ink/40' : `${t.bg} ${t.text}`
-              }`}>
-                {item.count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
   );
 }
 
 /* ================================================================
-   QUICK FILTERS
+   UNIFIED FILTER PANEL
    ================================================================ */
-function QuickFilters({ activeKey, onPick }) {
-  const tones = {
+function UnifiedFilterPanel({
+  activeTab, setActiveTab,
+  quickFilter, setQuickFilter,
+  summary, needsAttention,
+  pickQuickFilter,
+}) {
+  const views = [
+    ...TABS.map((t) => ({
+      ...t,
+      kind: 'tab',
+      count:
+        t.key === 'all'      ? summary.total :
+        t.key === 'inbound'  ? summary.inbound :
+        t.key === 'outbound' ? summary.outbound :
+                               0,
+    })),
+    { key: 'today',     label: 'Today',     icon: Sun,          kind: 'quick' },
+    { key: 'connected', label: 'Connected', icon: CheckCircle2, kind: 'quick' },
+  ];
+
+  const toneMap = {
     purple:  { bg: 'bg-violet-50',  text: 'text-brand-purple',  ring: 'ring-violet-200' },
     emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600',   ring: 'ring-emerald-200' },
     rose:    { bg: 'bg-rose-50',    text: 'text-rose-600',      ring: 'ring-rose-200' },
@@ -1094,39 +1285,178 @@ function QuickFilters({ activeKey, onPick }) {
     slate:   { bg: 'bg-slate-50',   text: 'text-slate-600',     ring: 'ring-slate-200' },
   };
 
+  const activeAttentionItems = needsAttention.filter((i) => i.count > 0);
+
   return (
     <div className="card !p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card">
-          <ListFilter size={12} />
+      {/* VIEWS */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-brand-lilac/60 pb-3">
+        <span className="mr-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-brand-magenta">
+          <ListFilter size={11} />
+          Views
         </span>
-        <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-magenta">
-          Quick Filters
-        </p>
-      </div>
 
-      <div className="flex flex-wrap gap-2">
-        {QUICK_FILTERS.map((q) => {
-          const Icon = q.icon;
-          const active = activeKey === q.key;
-          const t = tones[q.tone] || tones.purple;
+        {views.map((v) => {
+          const Icon = v.icon;
+          const isTab = v.kind === 'tab';
+          const active = isTab
+            ? activeTab === v.key && (v.key !== 'all' || quickFilter === 'all')
+            : quickFilter === v.key;
           return (
             <button
-              key={q.key}
-              onClick={() => onPick(q.key)}
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all ${
+              key={v.key}
+              onClick={() => {
+                if (isTab) {
+                  setActiveTab(v.key);
+                  setQuickFilter('all');
+                } else {
+                  pickQuickFilter(v.key);
+                }
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all ${
                 active
-                  ? 'border-brand-magenta bg-brand-magenta text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)]'
-                  : 'border-brand-lilac bg-white text-brand-ink/70 hover:border-brand-magenta/40 hover:text-brand-magenta'
+                  ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)]'
+                  : 'text-brand-ink/60 hover:bg-brand-lilac/50 hover:text-brand-magenta'
               }`}
             >
-              <span className={`flex h-5 w-5 items-center justify-center rounded-md ${
-                active ? 'bg-white/25 text-white' : `${t.bg} ${t.text} ring-1 ${t.ring}`
-              }`}>
-                <Icon size={10} />
-              </span>
-              {q.label}
+              <Icon size={12} />
+              {v.label}
+              {typeof v.count === 'number' && (
+                <span
+                  className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                    active ? 'bg-white/25 text-white' : 'bg-brand-lilac/70 text-brand-purple'
+                  }`}
+                >
+                  {v.count}
+                </span>
+              )}
             </button>
+          );
+        })}
+      </div>
+
+      {/* NEEDS ATTENTION */}
+      {activeAttentionItems.length > 0 && (
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-rose-600">
+            <Zap size={11} />
+            Needs Attention
+          </p>
+          <div
+            className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {activeAttentionItems.map((item) => {
+              const Icon = item.icon;
+              const t = toneMap[item.tone] || toneMap.slate;
+              const active = quickFilter === item.key;
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => pickQuickFilter(item.key)}
+                  className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-semibold transition-all ${
+                    active
+                      ? 'border-brand-magenta bg-brand-magenta text-white shadow-[0_3px_10px_-3px_rgba(227,28,121,0.5)]'
+                      : 'border-brand-lilac bg-white text-brand-ink/70 hover:border-brand-magenta/40 hover:text-brand-magenta'
+                  }`}
+                >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded ring-1 ${
+                      active ? 'bg-white/25 text-white ring-white/30' : `${t.bg} ${t.text} ${t.ring}`
+                    }`}
+                  >
+                    <Icon size={9} />
+                  </span>
+                  {item.label}
+                  <span
+                    className={`rounded-full px-1.5 text-[9px] font-bold ${
+                      active ? 'bg-white/25 text-white' : `${t.bg} ${t.text}`
+                    }`}
+                  >
+                    {item.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================================================================
+   MISSED CALL RECOVERY
+   ================================================================ */
+function MissedCallRecovery({ records, onCall, onRetry, onView }) {
+  const recoveryItems = useMemo(() => {
+    return records
+      .filter(
+        (r) => r.status === 'missed' || r.outcome === 'No Answer' || r.outcome === 'Busy'
+      )
+      .sort((a, b) => new Date(b.at) - new Date(a.at))
+      .slice(0, 4);
+  }, [records]);
+
+  if (recoveryItems.length === 0) return null;
+
+  return (
+    <div className="card !p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-brand-magenta text-white shadow-card">
+            <PhoneMissed size={12} />
+          </span>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-rose-600">
+            Missed Call Recovery
+          </p>
+        </div>
+        <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-600">
+          {recoveryItems.length} need action
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {recoveryItems.map((r) => {
+          const elapsed = timeAgo(r.at);
+          const isRecent = Date.now() - new Date(r.at).getTime() < 30 * 60000;
+          return (
+            <div
+              key={r.id}
+              className={`flex items-center gap-3 rounded-xl border-2 bg-white p-3 transition-all hover:shadow-sm ${
+                isRecent ? 'border-rose-300' : 'border-brand-lilac/70'
+              }`}
+            >
+              <button
+                onClick={() => onView(r)}
+                aria-label={`View ${r.customer}`}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-rose-500 to-brand-magenta text-[11px] font-bold text-white shadow-sm"
+              >
+                {r.customer.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-brand-ink">{r.customer}</p>
+                <p className="truncate text-[11px] text-brand-ink/60">
+                  {r.status === 'missed' ? `Missed ${elapsed}` : `${r.outcome} · ${elapsed}`}
+                  {r.retryCount >= 2 ? ` · ${r.retryCount} attempts` : ''}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={() => onCall(r)}
+                  className="flex h-8 items-center gap-1.5 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 px-2.5 text-[11px] font-bold text-white shadow-card hover:scale-105"
+                >
+                  <Phone size={11} /> Call
+                </button>
+                <button
+                  onClick={() => onRetry(r)}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 text-[11px] font-bold text-amber-700 hover:bg-amber-100"
+                  title="Schedule retry"
+                >
+                  <Clock size={11} />
+                </button>
+              </div>
+            </div>
           );
         })}
       </div>
@@ -1135,129 +1465,12 @@ function QuickFilters({ activeKey, onPick }) {
 }
 
 /* ================================================================
-   ADVANCED FILTERS PANEL
-   ⬅️ "Lead Stage" replaced with "Priority"
-   ================================================================ */
-function AdvancedFiltersPanel({ filters, setFilters, onReset }) {
-  const update = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
-
-  return (
-    <div className="card !p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card">
-            <SlidersHorizontal size={13} />
-          </span>
-          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-magenta">
-            Advanced Filters
-          </p>
-        </div>
-        <button
-          onClick={onReset}
-          className="inline-flex items-center gap-1.5 rounded-full border border-brand-lilac bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-ink/60 hover:border-brand-magenta/40 hover:text-brand-magenta"
-        >
-          <RotateCcw size={11} /> Reset
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <FilterField
-          icon={CircleDot}
-          label="Status"
-          value={filters.status}
-          options={STATUS_OPTIONS}
-          onChange={(v) => update('status', v)}
-        />
-        <FilterField
-          icon={Phone}
-          label="Call Type"
-          value={filters.type}
-          options={CALL_TYPE_OPTIONS}
-          onChange={(v) => update('type', v)}
-        />
-        <FilterField
-          icon={Building2}
-          label="Campaign"
-          value={filters.campaign}
-          options={CAMPAIGN_OPTIONS}
-          onChange={(v) => update('campaign', v)}
-        />
-        {/* ⬅️ Priority filter (replaces leadStage) */}
-        <FilterField
-          icon={Flame}
-          label="Priority"
-          value={filters.priority}
-          options={PRIORITY_OPTIONS}
-          onChange={(v) => update('priority', v)}
-        />
-        <div>
-          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-ink/70">
-            <Timer size={12} /> Min Duration (minutes)
-          </p>
-          <input
-            type="number"
-            min="0"
-            value={filters.durationMin}
-            onChange={(e) => update('durationMin', e.target.value)}
-            placeholder="e.g. 2"
-            className="w-full rounded-lg border border-brand-lilac bg-white px-3 py-2 text-xs outline-none focus:border-brand-magenta"
-          />
-        </div>
-        <div>
-          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-ink/70">
-            <Calendar size={12} /> Custom Date Range
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              type="date"
-              value={filters.dateFrom}
-              onChange={(e) => update('dateFrom', e.target.value)}
-              className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta"
-            />
-            <input
-              type="date"
-              value={filters.dateTo}
-              onChange={(e) => update('dateTo', e.target.value)}
-              className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FilterField({ icon: Icon, label, value, options, onChange }) {
-  const normalized = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
-  return (
-    <div>
-      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-ink/70">
-        <Icon size={12} /> {label}
-      </p>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none rounded-lg border border-brand-lilac bg-white px-3 py-2 pr-8 text-xs outline-none focus:border-brand-magenta"
-        >
-          {normalized.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <ChevronDown size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-brand-ink/40" />
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================
    CALL RECORD ROW
-   ⬅️ Shows priority pill instead of leadStage
    ================================================================ */
 function CallRecordRow({
   record, selected, expanded, siblingRecords,
   onToggleSelect, onToggleExpand,
-  onView, onCall, onFollowUp, onViewLead,
+  onView, onCall, onFollowUp, onRetry, onViewLead,
 }) {
   const isMissed = record.status === 'missed';
   const isInbound = record.type === 'inbound';
@@ -1272,18 +1485,32 @@ function CallRecordRow({
   const ActionIcon = action.icon;
   const actionTone = NEXT_ACTION_TONES[action.tone] || NEXT_ACTION_TONES.purple;
 
+  const nextContact = getNextContactState(record);
+  const nextContactTone =
+    nextContact.state === 'overdue'
+      ? 'bg-rose-50 text-rose-600 ring-1 ring-rose-200'
+      : nextContact.state === 'due-soon'
+      ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+      : nextContact.state === 'today'
+      ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200'
+      : nextContact.state === 'future'
+      ? 'bg-violet-50 text-brand-purple ring-1 ring-violet-200'
+      : null;
+
   return (
-    <div className={`group relative overflow-hidden rounded-xl border-2 bg-white transition-all hover:shadow-md ${
-      isMissed ? 'border-rose-200/70' : 'border-brand-lilac/70 hover:border-brand-magenta/40'
-    } ${selected ? 'ring-2 ring-brand-magenta/30' : ''}`}>
+    <div
+      className={`group relative overflow-hidden rounded-xl border-2 bg-white transition-all hover:shadow-md ${
+        isMissed ? 'border-rose-200/70' : 'border-brand-lilac/70 hover:border-brand-magenta/40'
+      } ${selected ? 'ring-2 ring-brand-magenta/30' : ''}`}
+    >
       <div className="flex flex-wrap items-center gap-3 px-3 py-3 sm:flex-nowrap sm:gap-4 sm:px-4">
-        <button
-          onClick={onToggleSelect}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-brand-lilac bg-white text-brand-magenta"
-          title="Select"
-        >
-          {selected ? <CheckSquare size={12} /> : <Square size={12} className="text-brand-ink/30" />}
-        </button>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`Select ${record.customer}`}
+          className="h-4 w-4 shrink-0 cursor-pointer rounded border-brand-lilac accent-brand-magenta"
+        />
 
         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconTone}`}>
           <Icon size={16} />
@@ -1292,10 +1519,18 @@ function CallRecordRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-semibold text-brand-ink">{record.customer}</p>
-            {/* ⬅️ Priority pill replaces leadStage pill */}
             {record.priority && (
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${PRIORITY_PILL_STYLES[record.priority] || 'bg-brand-mist text-brand-ink/60'}`}>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
+                  PRIORITY_PILL_STYLES[record.priority] || 'bg-brand-mist text-brand-ink/60'
+                }`}
+              >
                 {record.priority}
+              </span>
+            )}
+            {record.leadId && record.leadId !== '—' && (
+              <span className="hidden shrink-0 rounded-full bg-brand-mist px-2 py-0.5 text-[9px] font-mono font-semibold text-brand-ink/60 sm:inline-block">
+                {record.leadId}
               </span>
             )}
             {isMissed && (
@@ -1308,10 +1543,16 @@ function CallRecordRow({
                 {timeAgo(record.at)}
               </span>
             )}
+            {nextContactTone && (
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ${nextContactTone}`}>
+                <CalendarClock size={9} className="inline" /> {nextContact.label}
+              </span>
+            )}
           </div>
           <p className="truncate text-xs text-brand-ink/50">
-            {record.mobile}{record.campaign ? ` · ${record.campaign}` : ''}
-            {record.source ? ` · ${record.source}` : ''}
+            {record.mobile}
+            {record.campaign ? ` · ${record.campaign}` : ''}
+            {record.purpose ? ` · ${record.purpose}` : ''}
           </p>
         </div>
 
@@ -1329,11 +1570,18 @@ function CallRecordRow({
           <p className="font-semibold text-brand-ink/70">{record.outcome || '—'}</p>
         </div>
 
-        <span className={`hidden shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 sm:inline-flex ${actionTone}`}>
+        <span
+          title={action.reason}
+          className={`hidden shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 sm:inline-flex ${actionTone}`}
+        >
           <ActionIcon size={10} /> {action.label}
         </span>
 
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${STATUS_STYLES[record.status] || STATUS_STYLES.failed}`}>
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${
+            STATUS_STYLES[record.status] || STATUS_STYLES.failed
+          }`}
+        >
           {record.status}
         </span>
 
@@ -1352,6 +1600,15 @@ function CallRecordRow({
           >
             <Eye size={13} />
           </button>
+          {(isMissed || record.outcome === 'No Answer' || record.outcome === 'Busy') && (
+            <button
+              onClick={onRetry}
+              className="hidden h-8 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 text-[11px] font-semibold text-amber-700 transition-all hover:bg-amber-100 sm:flex"
+              title="Schedule retry"
+            >
+              <Clock size={12} />
+            </button>
+          )}
           {(isMissed || record.outcome === 'No Answer' || record.outcome === 'Call Back') && (
             <button
               onClick={onFollowUp}
@@ -1389,26 +1646,47 @@ function CallRecordRow({
             {[record, ...siblingRecords]
               .sort((a, b) => new Date(b.at) - new Date(a.at))
               .map((r) => {
-                const RIcon = r.status === 'missed' ? PhoneMissed : r.type === 'inbound' ? PhoneIncoming : PhoneOutgoing;
+                const RIcon =
+                  r.status === 'missed'
+                    ? PhoneMissed
+                    : r.type === 'inbound'
+                    ? PhoneIncoming
+                    : PhoneOutgoing;
                 return (
-                  <button
+                  <div
                     key={r.id}
-                    onClick={onView}
-                    className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-left text-xs transition-all hover:shadow-sm"
+                    className="flex w-full items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs"
                   >
-                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
-                      r.status === 'missed' ? 'bg-rose-50 text-rose-500' :
-                      r.type === 'inbound' ? 'bg-emerald-50 text-emerald-500' :
-                      'bg-violet-50 text-brand-purple'
-                    }`}>
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                        r.status === 'missed'
+                          ? 'bg-rose-50 text-rose-500'
+                          : r.type === 'inbound'
+                          ? 'bg-emerald-50 text-emerald-500'
+                          : 'bg-violet-50 text-brand-purple'
+                      }`}
+                    >
                       <RIcon size={11} />
                     </span>
                     <span className="w-20 shrink-0 font-mono text-[10px] text-brand-ink/50">
-                      {new Date(r.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(r.at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
                     </span>
-                    <span className="flex-1 truncate font-semibold text-brand-ink">{r.outcome || '—'}</span>
-                    <span className="shrink-0 font-mono text-[10px] text-brand-ink/60">{r.duration}</span>
-                  </button>
+                    <span className="flex-1 truncate font-semibold text-brand-ink">
+                      {r.outcome || '—'}
+                    </span>
+                    <span className="shrink-0 font-mono text-[10px] text-brand-ink/60">
+                      {r.duration}
+                    </span>
+                    <button
+                      onClick={onView}
+                      className="shrink-0 rounded-md border border-brand-lilac bg-white px-2 py-0.5 text-[10px] font-semibold text-brand-ink/60 hover:border-brand-magenta/40 hover:text-brand-magenta"
+                    >
+                      View
+                    </button>
+                  </div>
                 );
               })}
           </div>
@@ -1419,12 +1697,99 @@ function CallRecordRow({
 }
 
 /* ================================================================
+   RETRY MODAL
+   ================================================================ */
+function RetryModal({ record, onClose, onSave }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+              <Clock size={18} />
+            </div>
+            <div>
+              <h3 className="font-display text-lg font-semibold text-brand-ink">Schedule Retry</h3>
+              <p className="text-xs text-brand-ink/50">{record.customer}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {record.retryCount >= 2 && (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+              <AlertTriangle size={10} /> High retry count
+            </p>
+            <p className="text-[11px] text-amber-800">
+              Already tried {record.retryCount} times. Consider a different time or channel.
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {RETRY_PRESETS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => onSave(record, p.value)}
+              className="flex w-full items-center justify-between rounded-xl border border-brand-lilac bg-white px-4 py-3 text-sm font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta"
+            >
+              <span>{p.label}</span>
+              <ChevronRight size={14} className="text-brand-ink/30" />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
    INCOMING CALL MODAL
    ================================================================ */
 function IncomingCallModal({ call, onAccept, onReject }) {
+  /* Auto-reject after 30 seconds */
+  useEffect(() => {
+    const t = setTimeout(onReject, 30000);
+    return () => clearTimeout(t);
+  }, [onReject]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onReject();
+      if (e.key === 'Enter') onAccept();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onAccept, onReject]);
+
   return (
     <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-panel">
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-panel"
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="relative bg-gradient-to-br from-brand-magenta to-brand-purple px-6 pb-6 pt-6 text-center text-white">
           <div className="mb-2 flex items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-white/80">
             <span className="relative flex h-2 w-2">
@@ -1523,11 +1888,25 @@ function NewLeadModal({ incomingCall, onClose, onCreate }) {
   const [priority, setPriority] = useState('Medium');
   const [notes, setNotes] = useState('');
 
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const canSave = name.trim().length > 0;
 
   return (
-    <div className="fixed inset-0 z-[76] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-panel">
+    <div
+      className="fixed inset-0 z-[76] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white">
@@ -1538,7 +1917,11 @@ function NewLeadModal({ incomingCall, onClose, onCreate }) {
               <p className="text-xs text-brand-ink/50">Unknown caller · +91 {incomingCall.mobile}</p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac"
+            aria-label="Close"
+          >
             <X size={18} />
           </button>
         </div>
@@ -1598,7 +1981,7 @@ function NewLeadModal({ incomingCall, onClose, onCreate }) {
                   notes,
                 })
               }
-              className="flex-1 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Save & Answer
             </button>
@@ -1620,11 +2003,17 @@ function CallModal({ target, onClose, onEnd }) {
   const [onHold, setOnHold] = useState(false);
   const [recording, setRecording] = useState(true);
   const [notes, setNotes] = useState('');
-  const [disposition, setDisposition] = useState('Connected');
+  const [purpose, setPurpose] = useState('');
 
   const name = target.name || target.customer || 'Unknown';
   const phone = target.mobile || target.phone || '';
   const ctx = target.context || {};
+
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   useEffect(() => {
     if (callState !== 'ringing') return;
@@ -1647,9 +2036,9 @@ function CallModal({ target, onClose, onEnd }) {
   const endCall = () => {
     onEnd({
       duration: formatTime(seconds),
-      disposition,
       notes,
       recording,
+      purpose,
       direction: target.direction || 'outgoing',
     });
   };
@@ -1658,14 +2047,20 @@ function CallModal({ target, onClose, onEnd }) {
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-panel">
+      <div
+        className="w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-panel"
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="grid grid-cols-1 md:grid-cols-5">
           <div className="md:col-span-3">
-            <div className={`relative px-6 pb-6 pt-6 text-center text-white ${
-              callState === 'connected'
-                ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
-                : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
-            }`}>
+            <div
+              className={`relative px-6 pb-6 pt-6 text-center text-white ${
+                callState === 'connected'
+                  ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
+                  : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
+              }`}
+            >
               <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider">
                 <span className="flex items-center gap-1.5 truncate text-white/80">
                   {isIncoming ? <PhoneIncoming size={11} /> : <PhoneOutgoing size={11} />}
@@ -1682,6 +2077,7 @@ function CallModal({ target, onClose, onEnd }) {
               <button
                 onClick={onClose}
                 className="absolute right-4 top-4 rounded-lg p-1.5 text-white/70 hover:bg-white/20"
+                aria-label="Close"
               >
                 <X size={18} />
               </button>
@@ -1713,6 +2109,19 @@ function CallModal({ target, onClose, onEnd }) {
 
               {callState === 'connected' && (
                 <div className="space-y-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Call Purpose</label>
+                    <select
+                      value={purpose}
+                      onChange={(e) => setPurpose(e.target.value)}
+                      className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+                    >
+                      <option value="">— Select purpose —</option>
+                      {CALL_PURPOSES.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Call Notes</label>
                     <textarea
@@ -1758,7 +2167,6 @@ function CallModal({ target, onClose, onEnd }) {
             </p>
 
             <div className="space-y-2.5">
-              {/* ⬅️ Priority instead of Stage */}
               <ContextRow icon={Flame}     label="Priority"     value={ctx.priority || '—'} />
               <ContextRow icon={Layers}    label="Campaign"     value={ctx.campaign || '—'} />
               <ContextRow icon={Building2} label="Source"       value={ctx.source || '—'} />
@@ -1823,15 +2231,41 @@ function CallControl({ icon: Icon, label, active, onClick }) {
 function DispositionModal({ record, onClose, onSave }) {
   const [disposition, setDisposition] = useState(record.outcome || 'Connected');
   const [notes, setNotes] = useState(record.notes || '');
+  const [purpose, setPurpose] = useState(record.purpose || '');
   const [scheduleFollowUp, setScheduleFollowUp] = useState(false);
+  const [structuredNotes, setStructuredNotes] = useState({
+    need: record.structuredNotes?.need || '',
+    budget: record.structuredNotes?.budget || '',
+    requirement: record.structuredNotes?.requirement || '',
+    concern: record.structuredNotes?.concern || '',
+    nextAction: record.structuredNotes?.nextAction || '',
+  });
+
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const isNotInterested = disposition === 'Not Interested';
   const isCallback = disposition === 'Call Back' || disposition === 'Follow-Up Required';
   const isNoAnswer = disposition === 'No Answer' || disposition === 'Busy';
+  const isInterested = disposition === 'Interested';
+  const autoSchedule = isCallback || isNoAnswer;
+
+  const setStructured = (k, v) => setStructuredNotes((s) => ({ ...s, [k]: v }));
 
   return (
-    <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-panel">
+    <div
+      className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white">
@@ -1844,16 +2278,18 @@ function DispositionModal({ record, onClose, onSave }) {
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac"
+            aria-label="Close"
+          >
             <X size={18} />
           </button>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">
-              What happened?
-            </label>
+            <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">What happened?</label>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {PRIMARY_DISPOSITIONS.map((d) => (
                 <button
@@ -1870,6 +2306,60 @@ function DispositionModal({ record, onClose, onSave }) {
               ))}
             </div>
           </div>
+
+          <div>
+            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-ink/70">
+              <Target size={12} /> Call Purpose
+            </label>
+            <select
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+            >
+              <option value="">— Select purpose —</option>
+              {CALL_PURPOSES.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+
+          {isInterested && (
+            <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase text-emerald-700">
+                <Sparkles size={11} /> Customer Requirements
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="Need (e.g. 2BHK)"
+                  value={structuredNotes.need}
+                  onChange={(e) => setStructured('need', e.target.value)}
+                  className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand-magenta"
+                />
+                <input
+                  type="text"
+                  placeholder="Budget (e.g. ₹45-55L)"
+                  value={structuredNotes.budget}
+                  onChange={(e) => setStructured('budget', e.target.value)}
+                  className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand-magenta"
+                />
+                <input
+                  type="text"
+                  placeholder="Requirement (e.g. weekend visit)"
+                  value={structuredNotes.requirement}
+                  onChange={(e) => setStructured('requirement', e.target.value)}
+                  className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand-magenta"
+                />
+                <input
+                  type="text"
+                  placeholder="Concern (e.g. price)"
+                  value={structuredNotes.concern}
+                  onChange={(e) => setStructured('concern', e.target.value)}
+                  className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs outline-none focus:border-brand-magenta"
+                />
+              </div>
+            </div>
+          )}
 
           {isCallback && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
@@ -1955,18 +2445,23 @@ function DispositionModal({ record, onClose, onSave }) {
             />
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-brand-lilac bg-brand-mist/40 p-3 text-sm text-brand-ink/70">
+          <label
+            className={`flex cursor-pointer items-center gap-2 rounded-xl border border-brand-lilac bg-brand-mist/40 p-3 text-sm text-brand-ink/70 ${
+              autoSchedule ? 'cursor-not-allowed opacity-90' : ''
+            }`}
+          >
             <input
               type="checkbox"
-              checked={scheduleFollowUp || isCallback || isNoAnswer}
+              checked={scheduleFollowUp || autoSchedule}
+              disabled={autoSchedule}
               onChange={(e) => setScheduleFollowUp(e.target.checked)}
               className="h-4 w-4 rounded border-brand-lilac accent-brand-magenta"
             />
             <Calendar size={14} className="text-amber-600" />
             Schedule a follow-up
-            {(isCallback || isNoAnswer) && (
+            {autoSchedule && (
               <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                Recommended
+                Auto-enabled
               </span>
             )}
           </label>
@@ -1980,7 +2475,14 @@ function DispositionModal({ record, onClose, onSave }) {
             </button>
             <button
               onClick={() =>
-                onSave(record, disposition, notes, scheduleFollowUp || isCallback || isNoAnswer)
+                onSave(
+                  record,
+                  disposition,
+                  notes,
+                  scheduleFollowUp || autoSchedule,
+                  structuredNotes,
+                  purpose
+                )
               }
               className="flex-1 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110"
             >
@@ -2002,9 +2504,23 @@ function FollowUpModal({ record, onClose, onSave }) {
   const [time, setTime] = useState('10:00');
   const [notes, setNotes] = useState('');
 
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-panel">
+    <div
+      className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white">
@@ -2015,7 +2531,11 @@ function FollowUpModal({ record, onClose, onSave }) {
               <p className="text-xs text-brand-ink/50">{record.customer}</p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac"
+            aria-label="Close"
+          >
             <X size={18} />
           </button>
         </div>
@@ -2075,14 +2595,21 @@ function FollowUpModal({ record, onClose, onSave }) {
 
 /* ================================================================
    CALL RECORD DRAWER
-   ⬅️ Lead status row replaced with Priority
    ================================================================ */
-function CallRecordDrawer({ record, siblingRecords, onClose, onCall, onFollowUp, onViewLead }) {
+function CallRecordDrawer({ record, siblingRecords, onClose, onCall, onFollowUp, onRetry, onViewLead }) {
   const isMissed = record.status === 'missed';
   const isInbound = record.type === 'inbound';
+  const [activeTab, setActiveTab] = useState('overview');
+
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const action = getNextAction(record);
   const ActionIcon = action.icon;
+  const nextContact = getNextContactState(record);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
@@ -2131,185 +2658,344 @@ function CallRecordDrawer({ record, siblingRecords, onClose, onCall, onFollowUp,
   }, [record, siblingRecords, isInbound]);
 
   const retryHistory = record.retryHistory || [];
+  const allCallsFromCustomer = [record, ...siblingRecords];
+
+  const nextContactTone =
+    nextContact.state === 'overdue'
+      ? 'border-rose-200 bg-rose-50 text-rose-600'
+      : nextContact.state === 'due-soon'
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : nextContact.state === 'today'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+      : nextContact.state === 'future'
+      ? 'border-violet-200 bg-violet-50 text-brand-purple'
+      : 'border-brand-lilac bg-brand-mist/40 text-brand-ink/60';
+
+  const drawerTabs = [
+    { key: 'overview',  label: 'Overview',  icon: Info },
+    { key: 'timeline',  label: 'Timeline',  icon: History },
+    { key: 'recording', label: 'Recording', icon: FileAudio },
+    { key: 'customer',  label: 'Customer',  icon: User },
+  ];
 
   return (
-    <div className="fixed inset-0 z-[60] flex justify-end bg-black/40">
-      <div className="h-full w-full max-w-lg overflow-y-auto bg-white shadow-panel">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-brand-lilac bg-white p-5">
-          <div>
-            <p className="font-mono text-[10px] uppercase tracking-wider text-brand-magenta">
-              {isInbound ? 'Inbound' : 'Outbound'} Call · {timeAgo(record.at)}
-            </p>
-            <h3 className="font-display text-lg font-semibold text-brand-ink">Call Details</h3>
+    <div className="fixed inset-0 z-[60] flex justify-end bg-black/40" onClick={onClose}>
+      <div
+        className="h-full w-full max-w-lg overflow-y-auto bg-white shadow-panel"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="sticky top-0 z-10 border-b border-brand-lilac bg-white">
+          <div className="flex items-center justify-between p-5 pb-3">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-wider text-brand-magenta">
+                {isInbound ? 'Inbound' : 'Outbound'} Call · {timeAgo(record.at)}
+              </p>
+              <h3 className="font-display text-lg font-semibold text-brand-ink">Call Details</h3>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
-            <X size={18} />
-          </button>
+
+          <div className="flex gap-1 overflow-x-auto px-5 pb-3">
+            {drawerTabs.map((t) => {
+              const Icon = t.icon;
+              const active = activeTab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setActiveTab(t.key)}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                    active
+                      ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-card'
+                      : 'text-brand-ink/60 hover:bg-brand-lilac/50 hover:text-brand-magenta'
+                  }`}
+                >
+                  <Icon size={11} />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="space-y-5 p-5">
-          <div className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 ${
-            action.tone === 'rose'    ? 'border-rose-200 bg-rose-50' :
-            action.tone === 'amber'   ? 'border-amber-200 bg-amber-50' :
-            action.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50' :
-            action.tone === 'slate'   ? 'border-slate-200 bg-slate-50' :
-                                        'border-violet-200 bg-violet-50'
-          }`}>
-            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white ${
-              action.tone === 'rose'    ? 'text-rose-600' :
-              action.tone === 'amber'   ? 'text-amber-700' :
-              action.tone === 'emerald' ? 'text-emerald-600' :
-              action.tone === 'slate'   ? 'text-slate-600' :
-                                          'text-brand-purple'
-            }`}>
+          <div
+            className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 ${
+              action.tone === 'rose'
+                ? 'border-rose-200 bg-rose-50'
+                : action.tone === 'amber'
+                ? 'border-amber-200 bg-amber-50'
+                : action.tone === 'emerald'
+                ? 'border-emerald-200 bg-emerald-50'
+                : action.tone === 'slate'
+                ? 'border-slate-200 bg-slate-50'
+                : 'border-violet-200 bg-violet-50'
+            }`}
+          >
+            <span
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white ${
+                action.tone === 'rose'
+                  ? 'text-rose-600'
+                  : action.tone === 'amber'
+                  ? 'text-amber-700'
+                  : action.tone === 'emerald'
+                  ? 'text-emerald-600'
+                  : action.tone === 'slate'
+                  ? 'text-slate-600'
+                  : 'text-brand-purple'
+              }`}
+            >
               <ActionIcon size={16} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-brand-ink/40">
-                Next Action
-              </p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-brand-ink/40">Next Action</p>
               <p className="text-sm font-bold text-brand-ink">{action.label}</p>
+              {action.reason && (
+                <p className="mt-0.5 text-[11px] text-brand-ink/60">{action.reason}</p>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className={`flex h-14 w-14 items-center justify-center rounded-full text-sm font-bold text-white ${
-              isInbound
-                ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
-                : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
-            }`}>
-              {record.customer.split(' ').map((n) => n[0]).slice(0, 2).join('')}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-brand-ink">{record.customer}</p>
-              <p className="text-sm text-brand-ink/50">{record.mobile}</p>
-            </div>
-            <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${STATUS_STYLES[record.status] || STATUS_STYLES.failed}`}>
-              {record.status}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <InfoBox label="Duration" value={record.duration} />
-            <InfoBox label="Type"     value={isInbound ? 'Inbound' : 'Outbound'} />
-            <InfoBox label="Outcome"  value={record.outcome || '—'} />
-            <InfoBox label="Agent"    value="You" />
-          </div>
-
-          <div className="grid grid-cols-4 gap-2">
-            <DrawerAction icon={Phone}         label="Call"      tone="emerald" onClick={onCall} />
-            <DrawerAction icon={Calendar}      label="Follow-Up" tone="amber"   onClick={onFollowUp} />
-            <DrawerAction icon={MessageCircle} label="Message"   tone="emerald" onClick={() => {}} />
-            <DrawerAction icon={Users}         label="View Lead" tone="purple"  onClick={onViewLead} />
-          </div>
-
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-              <FileAudio size={11} /> Call Recording
-            </p>
-            {record.recording ? (
-              <>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setIsPlaying((p) => !p)}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card"
-                  >
-                    {isPlaying ? <Pause size={14} /> : <Play size={14} fill="currentColor" />}
-                  </button>
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-amber-100">
-                    <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple" />
-                  </div>
-                  <span className="shrink-0 font-mono text-[10px] text-amber-700">
-                    02:14 / {record.duration}
-                  </span>
+          {activeTab === 'overview' && (
+            <>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`flex h-14 w-14 items-center justify-center rounded-full text-sm font-bold text-white ${
+                    isInbound
+                      ? 'bg-gradient-to-br from-emerald-500 to-emerald-600'
+                      : 'bg-gradient-to-br from-brand-magenta to-brand-purple'
+                  }`}
+                >
+                  {record.customer.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-brand-ink">{record.customer}</p>
+                  <p className="text-sm text-brand-ink/50">{record.mobile}</p>
+                  {record.leadId && (
+                    <p className="font-mono text-[10px] text-brand-ink/40">{record.leadId}</p>
+                  )}
                 </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    {[1, 1.25, 1.5, 2].map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => setPlaySpeed(s)}
-                        className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
-                          playSpeed === s ? 'bg-brand-magenta text-white' : 'bg-white text-amber-700 hover:bg-amber-100'
-                        }`}
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${
+                    STATUS_STYLES[record.status] || STATUS_STYLES.failed
+                  }`}
+                >
+                  {record.status}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <InfoBox label="Duration" value={record.duration} />
+                <InfoBox label="Type"     value={isInbound ? 'Inbound' : 'Outbound'} />
+                <InfoBox label="Outcome"  value={record.outcome || '—'} />
+                <InfoBox label="Agent"    value="You" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink/50">
+                    <Clock size={10} className="inline" /> Last Contact
+                  </p>
+                  <p className="text-xs font-semibold text-brand-ink">{formatDateTime(record.at)}</p>
+                </div>
+                <div className={`rounded-xl border-2 p-3 ${nextContactTone}`}>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
+                    <CalendarClock size={10} className="inline" /> Next Contact
+                  </p>
+                  <p className="text-xs font-bold">{nextContact.label}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-2">
+                <DrawerAction icon={Phone}    label="Call"      tone="emerald" onClick={onCall} />
+                <DrawerAction icon={Calendar} label="Follow-Up" tone="amber"   onClick={onFollowUp} />
+                <DrawerAction icon={Clock}    label="Retry"     tone="rose"    onClick={onRetry} />
+                <DrawerAction icon={Users}    label="View Lead" tone="purple"  onClick={onViewLead} />
+              </div>
+
+              <div className="card !space-y-2.5 !p-4">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
+                  Call Summary
+                </p>
+                <Row icon={Flame}     label="Priority"    value={record.priority || '—'} />
+                <Row icon={Target}    label="Purpose"     value={record.purpose || '—'} />
+                <Row icon={Building2} label="Campaign"    value={record.campaign || '—'} />
+                <Row icon={Layers}    label="Source"      value={record.source || '—'} />
+                <Row icon={PhoneCall} label="Total calls" value={String(allCallsFromCustomer.length)} />
+              </div>
+
+              {retryHistory.length > 0 && (
+                <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
+                  <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-ink/60">
+                    <Repeat size={11} /> Retry History · {retryHistory.length} attempts
+                  </p>
+                  <div className="space-y-1.5">
+                    {retryHistory.map((r, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-[11px]"
                       >
-                        {s}x
-                      </button>
+                        <span className="text-brand-ink/60">Attempt {i + 1}</span>
+                        <span className="font-mono text-brand-ink/60">{formatDateTime(r.at)}</span>
+                        <span className="font-semibold text-brand-ink">{r.outcome}</span>
+                      </div>
                     ))}
                   </div>
-                  <button className="flex items-center gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-amber-700 hover:bg-amber-100">
-                    <Download size={11} /> Download
-                  </button>
                 </div>
-              </>
-            ) : (
-              <p className="text-[11px] italic text-amber-800">
-                🎧 No recording available for this call.
-              </p>
-            )}
-          </div>
+              )}
 
-          {retryHistory.length > 0 && (
-            <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
-              <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-ink/60">
-                <Repeat size={11} /> Retry History · {retryHistory.length} attempts
-              </p>
-              <div className="space-y-1.5">
-                {retryHistory.map((r, i) => (
-                  <div key={i} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-[11px]">
-                    <span className="text-brand-ink/60">Attempt {i + 1}</span>
-                    <span className="font-mono text-brand-ink/60">{formatDateTime(r.at)}</span>
-                    <span className="font-semibold text-brand-ink">{r.outcome}</span>
+              {record.structuredNotes && Object.values(record.structuredNotes).some(Boolean) && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                    <Sparkles size={11} /> Structured Notes
+                  </p>
+                  <div className="space-y-1.5">
+                    {record.structuredNotes.need && (
+                      <Row icon={Target} label="Need" value={record.structuredNotes.need} />
+                    )}
+                    {record.structuredNotes.budget && (
+                      <Row icon={IndianRupee} label="Budget" value={record.structuredNotes.budget} />
+                    )}
+                    {record.structuredNotes.requirement && (
+                      <Row icon={Calendar} label="Requirement" value={record.structuredNotes.requirement} />
+                    )}
+                    {record.structuredNotes.concern && (
+                      <Row icon={AlertCircle} label="Concern" value={record.structuredNotes.concern} />
+                    )}
                   </div>
+                </div>
+              )}
+
+              {record.notes && (
+                <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink/50">
+                    Call Notes
+                  </p>
+                  <p className="whitespace-pre-line text-sm text-brand-ink/80">{record.notes}</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'timeline' && (
+            <div>
+              <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
+                <History size={12} /> Customer Timeline
+              </p>
+              <div className="relative space-y-3">
+                <span className="pointer-events-none absolute bottom-4 left-[15px] top-4 w-px bg-brand-lilac" />
+                {timeline.map((t) => (
+                  <TimelineItem key={t.id} item={t} />
                 ))}
               </div>
             </div>
           )}
 
-          <div className="card !p-4 space-y-2.5">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
-              Customer Snapshot
-            </p>
-            {/* ⬅️ Priority row replaces Lead status */}
-            <Row icon={Flame}     label="Priority"         value={record.priority || '—'} />
-            <Row icon={Building2} label="Assigned campaign" value={record.campaign || '—'} />
-            <Row icon={Layers}    label="Lead source"      value={record.source || '—'} />
-            <Row icon={PhoneCall} label="Total calls"      value={String(siblingRecords.length)} />
-            <Row icon={History}   label="Last outcome"     value={record.outcome || '—'} />
-          </div>
-
-          {record.notes && (
-            <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink/50">
-                Call Notes
+          {activeTab === 'recording' && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="mb-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                <FileAudio size={11} /> Call Recording
               </p>
-              <p className="whitespace-pre-line text-sm text-brand-ink/80">{record.notes}</p>
-            </div>
-          )}
-
-          {record.followUpDate && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-                <CalendarClock size={11} /> Follow-Up Scheduled
-              </p>
-              <p className="text-sm font-semibold text-amber-800">{record.followUpDate}</p>
-              {record.followUpNotes && (
-                <p className="mt-1 text-xs text-amber-800/80">{record.followUpNotes}</p>
+              {record.recording ? (
+                <>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setIsPlaying((p) => !p)}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card"
+                    >
+                      {isPlaying ? <Pause size={16} /> : <Play size={16} fill="currentColor" />}
+                    </button>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-amber-100">
+                      <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple" />
+                    </div>
+                    <span className="shrink-0 font-mono text-[11px] text-amber-700">
+                      02:14 / {record.duration}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      {[1, 1.25, 1.5, 2].map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setPlaySpeed(s)}
+                          className={`rounded-md px-2 py-1 text-[10px] font-bold ${
+                            playSpeed === s
+                              ? 'bg-brand-magenta text-white'
+                              : 'bg-white text-amber-700 hover:bg-amber-100'
+                          }`}
+                        >
+                          {s}x
+                        </button>
+                      ))}
+                    </div>
+                    <button className="flex items-center gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-amber-700 hover:bg-amber-100">
+                      <Download size={11} /> Download
+                    </button>
+                  </div>
+                  <div className="mt-4 space-y-2 border-t border-amber-200 pt-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                      Key Moments
+                    </p>
+                    <button className="flex w-full items-center gap-3 rounded-lg bg-white px-3 py-2 text-left text-[11px] hover:bg-amber-100">
+                      <span className="font-mono text-amber-700">00:42</span>
+                      <span className="text-brand-ink/70">Customer discusses budget</span>
+                    </button>
+                    <button className="flex w-full items-center gap-3 rounded-lg bg-white px-3 py-2 text-left text-[11px] hover:bg-amber-100">
+                      <span className="font-mono text-amber-700">01:35</span>
+                      <span className="text-brand-ink/70">Asked for brochure</span>
+                    </button>
+                    <button className="flex w-full items-center gap-3 rounded-lg bg-white px-3 py-2 text-left text-[11px] hover:bg-amber-100">
+                      <span className="font-mono text-amber-700">03:10</span>
+                      <span className="text-brand-ink/70">Requested callback</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-[11px] italic text-amber-800">
+                  🎧 No recording available for this call.
+                </p>
               )}
             </div>
           )}
 
-          <div>
-            <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand-ink/40">
-              <History size={12} /> Customer Timeline
-            </p>
-            <div className="relative space-y-3">
-              <span className="pointer-events-none absolute left-[15px] top-4 bottom-4 w-px bg-brand-lilac" />
-              {timeline.map((t) => (
-                <TimelineItem key={t.id} item={t} />
-              ))}
-            </div>
-          </div>
+          {activeTab === 'customer' && (
+            <>
+              <div className="card !space-y-2.5 !p-4">
+                <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-brand-magenta">
+                  <Sparkles size={11} /> Lead Context
+                </p>
+                <Row icon={User}        label="Lead ID"          value={record.leadId || '—'} />
+                <Row icon={Flame}       label="Lead stage"       value={record.leadStage || '—'} />
+                <Row icon={Target}      label="Priority"         value={record.priority || '—'} />
+                <Row icon={Building2}   label="Campaign"         value={record.campaign || '—'} />
+                <Row icon={Layers}      label="Source"           value={record.source || '—'} />
+                <Row icon={IndianRupee} label="Budget"           value={record.budget || '—'} />
+                <Row icon={MapPin}      label="Location"         value={record.location || '—'} />
+                {record.preferredContact && (
+                  <Row icon={Clock} label="Preferred contact" value={record.preferredContact} />
+                )}
+              </div>
+
+              <div>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-brand-ink/40">
+                  Quick Actions
+                </p>
+                <div className="grid grid-cols-4 gap-2">
+                  <QuickAction icon={Phone}         label="Call" />
+                  <QuickAction icon={MessageCircle} label="WhatsApp" />
+                  <QuickAction icon={MessageSquare} label="SMS" />
+                  <QuickAction icon={ExternalLink}  label="View Lead" />
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -2328,17 +3014,23 @@ function TimelineItem({ item }) {
 
   return (
     <div className="relative flex items-start gap-3">
-      <span className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-white ${tone.ring}`}>
+      <span
+        className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-white ${tone.ring}`}
+      >
         <Icon size={12} />
       </span>
       <div className="min-w-0 flex-1 rounded-xl border border-brand-lilac/60 bg-white p-2.5">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-semibold capitalize text-brand-ink">
-            {item.type === 'inbound-call' ? 'Inbound call' :
-             item.type === 'outbound-call' ? 'Outbound call' :
-             item.type === 'note' ? 'Note added' :
-             item.type === 'follow-up' ? 'Follow-up scheduled' :
-             'Activity'}
+            {item.type === 'inbound-call'
+              ? 'Inbound call'
+              : item.type === 'outbound-call'
+              ? 'Outbound call'
+              : item.type === 'note'
+              ? 'Note added'
+              : item.type === 'follow-up'
+              ? 'Follow-up scheduled'
+              : 'Activity'}
             {item.current && (
               <span className="ml-1 rounded-full bg-brand-magenta/10 px-1.5 py-0.5 text-[9px] font-bold text-brand-magenta">
                 Current
@@ -2373,6 +3065,15 @@ function DrawerAction({ icon: Icon, label, tone, onClick }) {
         <Icon size={14} />
       </span>
       {label}
+    </button>
+  );
+}
+
+function QuickAction({ icon: Icon, label }) {
+  return (
+    <button className="flex flex-col items-center gap-1 rounded-xl border border-brand-lilac bg-white p-2 text-center transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40">
+      <Icon size={14} className="text-brand-magenta" />
+      <span className="text-[10px] font-semibold text-brand-ink/70">{label}</span>
     </button>
   );
 }
@@ -2473,6 +3174,13 @@ function DropdownFilter({ label, icon: Icon, value, options, onChange }) {
   );
   const current = normalized.find((o) => o.value === value);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
   return (
     <div className="relative">
       <button
@@ -2481,7 +3189,9 @@ function DropdownFilter({ label, icon: Icon, value, options, onChange }) {
       >
         {Icon && <Icon size={14} className="text-brand-magenta" />}
         <span className="text-brand-ink/60">{label}:</span>
-        <span className="font-semibold capitalize text-brand-magenta">{current?.label ?? value}</span>
+        <span className="font-semibold capitalize text-brand-magenta">
+          {current?.label ?? value}
+        </span>
         <ChevronDown size={14} className="text-brand-ink/40" />
       </button>
       {open && (
@@ -2491,7 +3201,10 @@ function DropdownFilter({ label, icon: Icon, value, options, onChange }) {
             {normalized.map((o) => (
               <button
                 key={o.value}
-                onClick={() => { onChange(o.value); setOpen(false); }}
+                onClick={() => {
+                  onChange(o.value);
+                  setOpen(false);
+                }}
                 className={`w-full rounded-lg px-3 py-2 text-left text-sm ${
                   value === o.value
                     ? 'bg-brand-magenta/10 font-semibold text-brand-magenta'
@@ -2504,6 +3217,125 @@ function DropdownFilter({ label, icon: Icon, value, options, onChange }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/* ================================================================
+   ADVANCED FILTERS PANEL
+   ================================================================ */
+function AdvancedFiltersPanel({ filters, setFilters, onReset }) {
+  const update = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
+
+  return (
+    <div className="card !p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card">
+            <SlidersHorizontal size={13} />
+          </span>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-magenta">
+            Advanced Filters
+          </p>
+        </div>
+        <button
+          onClick={onReset}
+          className="inline-flex items-center gap-1.5 rounded-full border border-brand-lilac bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-ink/60 hover:border-brand-magenta/40 hover:text-brand-magenta"
+        >
+          <RotateCcw size={11} /> Reset
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <FilterField
+          icon={CircleDot}
+          label="Status"
+          value={filters.status}
+          options={STATUS_FILTER_OPTIONS}
+          onChange={(v) => update('status', v)}
+        />
+        <FilterField
+          icon={Phone}
+          label="Call Type"
+          value={filters.type}
+          options={CALL_TYPE_OPTIONS}
+          onChange={(v) => update('type', v)}
+        />
+        <FilterField
+          icon={Building2}
+          label="Campaign"
+          value={filters.campaign}
+          options={CAMPAIGN_OPTIONS}
+          onChange={(v) => update('campaign', v)}
+        />
+        <FilterField
+          icon={Flame}
+          label="Priority"
+          value={filters.priority}
+          options={PRIORITY_OPTIONS}
+          onChange={(v) => update('priority', v)}
+        />
+        <div>
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-ink/70">
+            <Timer size={12} /> Min Duration (minutes)
+          </p>
+          <input
+            type="number"
+            min="0"
+            value={filters.durationMin}
+            onChange={(e) => update('durationMin', e.target.value)}
+            placeholder="e.g. 2"
+            className="w-full rounded-lg border border-brand-lilac bg-white px-3 py-2 text-xs outline-none focus:border-brand-magenta"
+          />
+        </div>
+        <div>
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-ink/70">
+            <Calendar size={12} /> Custom Date Range
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="date"
+              value={filters.dateFrom}
+              onChange={(e) => update('dateFrom', e.target.value)}
+              className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta"
+            />
+            <input
+              type="date"
+              value={filters.dateTo}
+              onChange={(e) => update('dateTo', e.target.value)}
+              className="w-full rounded-lg border border-brand-lilac bg-white px-2.5 py-2 text-xs outline-none focus:border-brand-magenta"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FilterField({ icon: Icon, label, value, options, onChange }) {
+  const normalized = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
+  return (
+    <div>
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-brand-ink/70">
+        <Icon size={12} /> {label}
+      </p>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full appearance-none rounded-lg border border-brand-lilac bg-white px-3 py-2 pr-8 text-xs outline-none focus:border-brand-magenta"
+        >
+          {normalized.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={12}
+          className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-brand-ink/40"
+        />
+      </div>
     </div>
   );
 }
@@ -2584,15 +3416,23 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, delay = 0 }) {
   return (
     <div
       style={{ animationDelay: `${delay}ms` }}
-      className={`group relative overflow-hidden rounded-2xl border-2 bg-white p-4 shadow-sm transition-all duration-500 hover:-translate-y-1 animate-fade-slide-in ${t.border} ${t.shadow}`}
+      className={`group animate-fade-slide-in relative overflow-hidden rounded-2xl border-2 bg-white p-4 shadow-sm transition-all duration-500 hover:-translate-y-1 ${t.border} ${t.shadow}`}
     >
-      <span className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${t.bg} opacity-0 transition-opacity duration-500 group-hover:opacity-100`} />
-      <span className={`absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${t.bar} transition-transform duration-500 group-hover:scale-x-100`} />
-      <span className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full ${t.glow} opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100`} />
+      <span
+        className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${t.bg} opacity-0 transition-opacity duration-500 group-hover:opacity-100`}
+      />
+      <span
+        className={`absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${t.bar} transition-transform duration-500 group-hover:scale-x-100`}
+      />
+      <span
+        className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full ${t.glow} opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100`}
+      />
 
       <div className="relative">
         <div className="flex items-start justify-between">
-          <span className={`flex h-10 w-10 items-center justify-center rounded-xl border ${t.iconBg} transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6`}>
+          <span
+            className={`flex h-10 w-10 items-center justify-center rounded-xl border ${t.iconBg} transition-transform duration-500 group-hover:rotate-6 group-hover:scale-110`}
+          >
             <Icon size={18} />
           </span>
         </div>
@@ -2611,10 +3451,18 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, delay = 0 }) {
    ================================================================ */
 function Toast({ message, type }) {
   return (
-    <div className="fixed bottom-6 left-1/2 z-[100] -translate-x-1/2">
-      <div className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-panel ${
-        type === 'error' ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-emerald-200 bg-emerald-50 text-emerald-600'
-      }`}>
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed bottom-6 left-1/2 z-[100] -translate-x-1/2"
+    >
+      <div
+        className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold shadow-panel ${
+          type === 'error'
+            ? 'border-rose-200 bg-rose-50 text-rose-600'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-600'
+        }`}
+      >
         {type === 'error' ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
         {message}
       </div>

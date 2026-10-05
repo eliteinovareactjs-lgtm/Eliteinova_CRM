@@ -48,10 +48,53 @@ export const PROJECTS = [
 export const WEBSITES = PROJECTS;
 
 /* ==================== USERS ==================== */
+/* ==================== USERS ==================== */
 export const USERS = [
-  { id: 'sa-1', username: '900001', password: 'super@123', role: 'superadmin', name: 'SuperAdmin', websiteId: null, avatar: 'SA' },
-  { id: 'admin-1', username: '620472', password: 'admin@123', role: 'admin', name: 'Admin1', websiteId: 'matrimony', avatar: 'A1' },
-  { id: 'agent-1', username: '69793@123', password: 'agent@123', role: 'agent', name: 'Agent1', websiteId: 'matrimony', avatar: 'A1' },
+  {
+    id: 'sa-1',
+    username: '900001',
+    password: 'super@123',
+    role: 'superadmin',
+    name: 'SuperAdmin',
+    websiteId: null,
+    avatar: 'SA',
+  },
+  {
+    id: 'admin-1',
+    username: '620472',
+    password: 'admin@123',
+    role: 'admin',
+    name: 'Admin1',
+    websiteId: 'matrimony',
+    avatar: 'A1',
+  },
+  {
+    id: 'marketing-1',
+    username: '331045',
+    password: 'marketing@123',
+    role: 'marketing',
+    name: 'Meera Iyer',
+    websiteId: 'matrimony',
+    avatar: 'MI',
+  },
+  {
+    id: 'leadmanager-1',
+    username: '512078',
+    password: 'leadmanager@123',
+    role: 'leadmanager',
+    name: 'Kiran Reddy',
+    websiteId: 'matrimony',
+    avatar: 'KR',
+  },
+  {
+    id: 'agent-1',
+    username: '69793@123',
+    password: 'agent@123',
+    role: 'agent',
+    name: 'Agent1',
+    websiteId: 'matrimony',
+    avatar: 'A1',
+  },
 ];
 
 /* ==================== ADMINS ==================== */

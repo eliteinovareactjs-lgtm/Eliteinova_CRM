@@ -3,8 +3,10 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Bell, BellRing, Clock, Calendar, CheckCircle2, AlertCircle, X, Search,
   ChevronDown, StickyNote, ListFilter, Inbox, User, Tag, TrendingUp,
-  Flame, Megaphone, PhoneCall, Phone, ListChecks, RotateCcw, Ban,
-  List, Grid3x3, Trash2,
+  Flame, PhoneCall, Phone, ListChecks, RotateCcw, Ban,
+  List, Grid3x3, Trash2, Zap, ArrowRight, MessageCircle, Mail,
+  MessageSquare, ExternalLink, History, Target, Building2, MapPin,
+  IndianRupee, Layers, Sparkles, Timer, ChevronRight, CircleDot,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -12,17 +14,32 @@ import { useAuth } from '../../context/AuthContext';
    CONSTANTS
    ================================================================ */
 const TABS = [
-  { key: 'today',     label: "Today's Reminders", icon: BellRing },
-  { key: 'upcoming',  label: 'Upcoming',          icon: Calendar },
-  { key: 'completed', label: 'Completed',         icon: CheckCircle2 },
+  { key: 'today',     label: 'Today',     icon: BellRing },
+  { key: 'overdue',   label: 'Overdue',   icon: AlertCircle, live: true },
+  { key: 'upcoming',  label: 'Upcoming',  icon: Calendar },
+  { key: 'completed', label: 'Completed', icon: CheckCircle2 },
 ];
 
 const TYPE_META = {
-  followup: { label: 'Follow-Up',        icon: Calendar,   tint: 'bg-violet-50 text-brand-purple border-violet-200' },
-  call:     { label: 'Call Reminder',    icon: PhoneCall,  tint: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
-  callback: { label: 'Customer Callback',icon: Phone,      tint: 'bg-amber-50 text-amber-600 border-amber-200' },
-  task:     { label: 'Pending Task',     icon: ListChecks, tint: 'bg-rose-50 text-brand-magenta border-rose-200' },
+  followup: { label: 'Follow-Up',          icon: Calendar,   tint: 'bg-violet-50 text-brand-purple border-violet-200' },
+  call:     { label: 'Call Reminder',      icon: PhoneCall,  tint: 'bg-emerald-50 text-emerald-600 border-emerald-200' },
+  callback: { label: 'Customer Callback',  icon: Phone,      tint: 'bg-amber-50 text-amber-600 border-amber-200' },
+  task:     { label: 'Pending Task',       icon: ListChecks, tint: 'bg-rose-50 text-brand-magenta border-rose-200' },
 };
+
+const PURPOSE_OPTIONS = [
+  'Product enquiry', 'Pricing', 'Demo', 'Payment', 'Renewal',
+  'Document submission', 'Callback', 'Appointment', 'Other',
+];
+
+const SNOOZE_PRESETS = [
+  { label: '15 minutes', value: 15 },
+  { label: '30 minutes', value: 30 },
+  { label: '1 hour',     value: 60 },
+  { label: '2 hours',    value: 120 },
+  { label: 'Tomorrow',   value: 24 * 60 },
+  { label: 'Next week',  value: 7 * 24 * 60 },
+];
 
 const PRIORITY_STYLES = {
   High:   'border-rose-200 bg-rose-50 text-rose-600',
@@ -30,12 +47,39 @@ const PRIORITY_STYLES = {
   Low:    'border-emerald-200 bg-emerald-50 text-emerald-600',
 };
 
+const OUTCOME_OPTIONS = [
+  'Customer contacted', 'Customer unavailable', 'Follow-up completed',
+  'Information sent', 'Appointment confirmed', 'Customer not interested',
+  'Converted', 'Other',
+];
+
+/* ================================================================
+   HELPERS
+   ================================================================ */
+const ymd = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const getTiming = (r) => {
+  if (r.status === 'completed') return { state: 'completed', minutes: 0, label: 'Completed' };
+  const due = new Date(`${r.date}T${r.time}:00`);
+  const diffMin = Math.round((due.getTime() - Date.now()) / 60000);
+  if (diffMin < -1) return { state: 'overdue', minutes: Math.abs(diffMin), label: `${formatDuration(Math.abs(diffMin))} overdue` };
+  if (diffMin <= 15) return { state: 'due-now', minutes: diffMin, label: diffMin <= 0 ? 'Due now' : `Due in ${diffMin}m` };
+  return { state: 'scheduled', minutes: diffMin, label: `In ${formatDuration(diffMin)}` };
+};
+
+const formatDuration = (min) => {
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ${min % 60}m`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
+};
+
 /* ================================================================
    DEMO DATA
    ================================================================ */
 const buildDemoReminders = (agentName, websiteId) => {
-  const ymd = (d) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const today = new Date();
   const todayStr     = ymd(today);
   const tomorrowStr  = ymd(new Date(today.getTime() + 86400000));
@@ -43,15 +87,104 @@ const buildDemoReminders = (agentName, websiteId) => {
   const yesterdayStr = ymd(new Date(today.getTime() - 86400000));
   const lastWeekStr  = ymd(new Date(today.getTime() - 5 * 86400000));
 
+  const pastTime = (minsAgo) => {
+    const d = new Date(Date.now() - minsAgo * 60000);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  const futureTime = (minsAhead) => {
+    const d = new Date(Date.now() + minsAhead * 60000);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
   return [
-    { id: 'r-1', agentName, websiteId, type: 'followup', title: 'Follow-up with Customer A',      customer: 'Customer A', mobile: '9876543210', date: todayStr,     time: '10:00', priority: 'High',   status: 'today',     notes: '' },
-    { id: 'r-2', agentName, websiteId, type: 'call',     title: 'Call Customer B',                customer: 'Customer B', mobile: '9876543211', date: todayStr,     time: '11:30', priority: 'Medium', status: 'today',     notes: '' },
-    { id: 'r-3', agentName, websiteId, type: 'callback', title: 'Customer C asked for a callback',customer: 'Customer C', mobile: '9876543212', date: todayStr,     time: '14:00', priority: 'High',   status: 'today',     notes: 'Prefers afternoon.' },
-    { id: 'r-4', agentName, websiteId, type: 'task',     title: 'Prepare quotes for Customer D',  customer: 'Customer D', mobile: '9876543213', date: todayStr,     time: '16:15', priority: 'Medium', status: 'today',     notes: '' },
-    { id: 'r-5', agentName, websiteId, type: 'call',     title: 'Call Customer E for demo',       customer: 'Customer E', mobile: '9876543214', date: tomorrowStr,  time: '09:45', priority: 'High',   status: 'upcoming',  notes: '' },
-    { id: 'r-6', agentName, websiteId, type: 'followup', title: 'Follow-up with Customer F',      customer: 'Customer F', mobile: '9876543215', date: nextWeekStr,  time: '11:00', priority: 'Medium', status: 'upcoming',  notes: '' },
-    { id: 'r-7', agentName, websiteId, type: 'call',     title: 'Called Customer G',              customer: 'Customer G', mobile: '9876543216', date: yesterdayStr, time: '15:00', priority: 'Low',    status: 'completed', notes: '', completedAt: new Date(Date.now() - 86400_000).toISOString() },
-    { id: 'r-8', agentName, websiteId, type: 'task',     title: 'Sent brochure to Customer H',    customer: 'Customer H', mobile: '9876543217', date: lastWeekStr,  time: '12:30', priority: 'Low',    status: 'completed', notes: '', completedAt: new Date(Date.now() - 5 * 86400_000).toISOString() },
+    {
+      id: 'r-1', agentName, websiteId, type: 'callback',
+      title: 'Customer C asked for a callback', customer: 'Customer C', mobile: '9876543212',
+      date: todayStr, time: pastTime(135), priority: 'High', status: 'today',
+      purpose: 'Callback', notes: 'Prefers afternoon.',
+      leadStage: 'Hot', source: 'Landing Page', campaign: 'Diwali Campaign',
+      budget: '₹45L', location: 'Pune', lastOutcome: 'Interested',
+      preferredContact: '10:00 AM – 12:00 PM · Weekdays',
+      history: [
+        { icon: 'call', label: 'Call',         detail: 'Interested',           when: 'Yesterday · 4:20 PM' },
+        { icon: 'note', label: 'Note',         detail: 'Requested pricing',    when: 'Yesterday · 4:25 PM' },
+      ],
+    },
+    {
+      id: 'r-2', agentName, websiteId, type: 'call',
+      title: 'Call Customer B', customer: 'Customer B', mobile: '9876543211',
+      date: todayStr, time: pastTime(45), priority: 'Medium', status: 'today',
+      purpose: 'Pricing', notes: '',
+      leadStage: 'Warm', source: 'Facebook Ad', campaign: 'Q4 Push',
+      budget: '₹30L', location: 'Mumbai', lastOutcome: 'No Answer',
+      preferredContact: '2:00 PM – 5:00 PM · All days',
+      history: [],
+    },
+    {
+      id: 'r-3', agentName, websiteId, type: 'followup',
+      title: 'Follow-up with Customer A', customer: 'Customer A', mobile: '9876543210',
+      date: todayStr, time: futureTime(8), priority: 'High', status: 'today',
+      purpose: 'Demo', notes: '',
+      leadStage: 'Hot', source: 'Landing Page', campaign: 'Property Enquiry',
+      budget: '₹60L', location: 'Bangalore', lastOutcome: 'Interested',
+      preferredContact: '10:00 AM – 12:00 PM · Weekdays',
+      history: [
+        { icon: 'call', label: 'Call', detail: 'Interested · 4:20',  when: 'Yesterday' },
+        { icon: 'note', label: 'Note', detail: 'Requested brochure', when: 'Yesterday' },
+      ],
+    },
+    {
+      id: 'r-4', agentName, websiteId, type: 'task',
+      title: 'Prepare quotes for Customer D', customer: 'Customer D', mobile: '9876543213',
+      date: todayStr, time: '16:15', priority: 'Medium', status: 'today',
+      purpose: 'Document submission', notes: '',
+      leadStage: 'Warm', source: 'Referral', campaign: '—',
+      budget: '₹25L', location: 'Delhi', lastOutcome: 'Requested quote',
+      preferredContact: '—',
+      history: [],
+    },
+    {
+      id: 'r-5', agentName, websiteId, type: 'call',
+      title: 'Call Customer E for demo', customer: 'Customer E', mobile: '9876543214',
+      date: tomorrowStr, time: '09:45', priority: 'High', status: 'upcoming',
+      purpose: 'Demo', notes: '',
+      leadStage: 'Warm', source: 'Google Ads', campaign: 'Demo Drive',
+      budget: '₹50L', location: 'Hyderabad', lastOutcome: 'Interested',
+      preferredContact: '9:00 AM – 11:00 AM',
+      history: [],
+    },
+    {
+      id: 'r-6', agentName, websiteId, type: 'followup',
+      title: 'Follow-up with Customer F', customer: 'Customer F', mobile: '9876543215',
+      date: nextWeekStr, time: '11:00', priority: 'Medium', status: 'upcoming',
+      purpose: 'Renewal', notes: '',
+      leadStage: 'Cold', source: 'Walk-in', campaign: '—',
+      budget: '—', location: 'Chennai', lastOutcome: 'Contacted',
+      preferredContact: '—',
+      history: [],
+    },
+    {
+      id: 'r-7', agentName, websiteId, type: 'call',
+      title: 'Called Customer G', customer: 'Customer G', mobile: '9876543216',
+      date: yesterdayStr, time: '15:00', priority: 'Low', status: 'completed',
+      purpose: 'Pricing', notes: 'Customer not interested in current pricing.',
+      leadStage: 'Cold', source: '—', campaign: '—',
+      budget: '—', location: '—', lastOutcome: 'Not Interested',
+      completedAt: new Date(Date.now() - 86400000).toISOString(),
+      completionOutcome: 'Customer not interested',
+      history: [],
+    },
+    {
+      id: 'r-8', agentName, websiteId, type: 'task',
+      title: 'Sent brochure to Customer H', customer: 'Customer H', mobile: '9876543217',
+      date: lastWeekStr, time: '12:30', priority: 'Low', status: 'completed',
+      purpose: 'Document submission', notes: '',
+      leadStage: 'Warm', source: 'Referral', campaign: '—',
+      budget: '—', location: '—', lastOutcome: 'Information sent',
+      completedAt: new Date(Date.now() - 5 * 86400000).toISOString(),
+      completionOutcome: 'Information sent',
+      history: [],
+    },
   ];
 };
 
@@ -65,12 +198,22 @@ export default function Reminders() {
   const [viewMode, setViewMode] = useState('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
+  const [priorityFilter, setPriorityFilter] = useState('All');
+  const [quickFilter, setQuickFilter] = useState('All');
   const [toast, setToast] = useState(null);
   const [selected, setSelected] = useState(null);
   const [showNote, setShowNote] = useState(null);
   const [showReschedule, setShowReschedule] = useState(null);
+  const [showSnooze, setShowSnooze] = useState(null);
+  const [showComplete, setShowComplete] = useState(null);
   const [calling, setCalling] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const i = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(i);
+  }, []);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -85,55 +228,102 @@ export default function Reminders() {
     setReminders(buildDemoReminders(user?.name || 'Agent', activeWebsiteId));
   }, [user?.name, activeWebsiteId]);
 
-  /* ---------- SUMMARY ---------- */
+  const timedReminders = useMemo(
+    () => reminders.map((r) => ({ ...r, _timing: getTiming(r) })),
+    [reminders, tick]
+  );
+
   const summary = useMemo(() => {
-    const today = reminders.filter((r) => r.status === 'today').length;
-    const upcoming = reminders.filter((r) => r.status === 'upcoming').length;
-    const completed = reminders.filter((r) => r.status === 'completed').length;
-    return { today, upcoming, completed, total: reminders.length };
-  }, [reminders]);
+    const t = timedReminders.filter((r) => r.status !== 'completed');
+    const overdue = t.filter((r) => r._timing.state === 'overdue').length;
+    const dueNow  = t.filter((r) => r._timing.state === 'due-now').length;
+    const today   = t.filter((r) => r.status === 'today').length;
+    const upcoming = t.filter((r) => r.status === 'upcoming').length;
+    const completed = timedReminders.filter((r) => r.status === 'completed').length;
+    const highPriority = t.filter((r) => r.priority === 'High').length;
+    return { overdue, dueNow, today, upcoming, completed, highPriority, total: timedReminders.length };
+  }, [timedReminders]);
 
-  /* ---------- FILTERED ---------- */
+  const nextUp = useMemo(() => {
+    const candidates = timedReminders
+      .filter((r) => r.status !== 'completed' && r._timing.state !== 'overdue')
+      .sort((a, b) => a._timing.minutes - b._timing.minutes);
+    return candidates[0] || null;
+  }, [timedReminders]);
+
   const filtered = useMemo(() => {
-    let list = reminders.filter((r) => r.status === activeTab);
+    let list = timedReminders;
 
-    if (typeFilter !== 'All') list = list.filter((r) => r.type === typeFilter);
+    if (activeTab === 'today') {
+      list = list.filter((r) => r.status === 'today' || r._timing.state === 'overdue' || r._timing.state === 'due-now');
+    } else if (activeTab === 'overdue') {
+      list = list.filter((r) => r._timing.state === 'overdue');
+    } else if (activeTab === 'upcoming') {
+      list = list.filter((r) => r.status === 'upcoming');
+    } else if (activeTab === 'completed') {
+      list = list.filter((r) => r.status === 'completed');
+    }
+
+    if (quickFilter === 'high')       list = list.filter((r) => r.priority === 'High');
+    if (quickFilter === 'due-now')    list = list.filter((r) => r._timing.state === 'due-now');
+    if (quickFilter === 'overdue')    list = list.filter((r) => r._timing.state === 'overdue');
+    if (quickFilter === 'callbacks')  list = list.filter((r) => r.type === 'callback');
+    if (quickFilter === 'calls')      list = list.filter((r) => r.type === 'call');
+    if (quickFilter === 'followups')  list = list.filter((r) => r.type === 'followup');
+    if (quickFilter === 'tasks')      list = list.filter((r) => r.type === 'task');
+
+    if (typeFilter !== 'All')      list = list.filter((r) => r.type === typeFilter);
+    if (priorityFilter !== 'All')  list = list.filter((r) => r.priority === priorityFilter);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter((r) =>
-        `${r.title} ${r.customer} ${r.mobile} ${r.notes || ''}`.toLowerCase().includes(q)
+        `${r.title} ${r.customer} ${r.mobile} ${r.notes || ''} ${r.purpose || ''}`.toLowerCase().includes(q)
       );
     }
 
     return [...list].sort((a, b) => {
-      const aKey = a.status === 'completed' ? a.completedAt || `${a.date} ${a.time}` : `${a.date} ${a.time}`;
-      const bKey = b.status === 'completed' ? b.completedAt || `${b.date} ${b.time}` : `${b.date} ${b.time}`;
-      return a.status === 'completed' ? bKey.localeCompare(aKey) : aKey.localeCompare(bKey);
+      if (a.status === 'completed' && b.status !== 'completed') return 1;
+      if (b.status === 'completed' && a.status !== 'completed') return -1;
+      if (a.status === 'completed') {
+        return (b.completedAt || '').localeCompare(a.completedAt || '');
+      }
+      const order = { overdue: 0, 'due-now': 1, scheduled: 2 };
+      const oa = order[a._timing.state] ?? 2;
+      const ob = order[b._timing.state] ?? 2;
+      if (oa !== ob) return oa - ob;
+      return `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`);
     });
-  }, [reminders, activeTab, typeFilter, searchQuery]);
+  }, [timedReminders, activeTab, quickFilter, typeFilter, priorityFilter, searchQuery]);
 
-  /* ---------- ACTIONS ---------- */
   const updateReminder = (id, patch) =>
     setReminders((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
-  const handleComplete = (r) => {
-    updateReminder(r.id, { status: 'completed', completedAt: new Date().toISOString() });
-    showToast(`Reminder completed · ${r.title}`);
+  const handleComplete = (r, outcome, note) => {
+    updateReminder(r.id, {
+      status: 'completed',
+      completedAt: new Date().toISOString(),
+      completionOutcome: outcome,
+      notes: note ? (r.notes ? `${r.notes}\n${note}` : note) : r.notes,
+    });
+    setShowComplete(null);
+    showToast(`Completed · ${r.title}`);
   };
 
   const handleSnooze = (r, minutes) => {
-    const newTime = (() => {
-      const [h, m] = r.time.split(':').map(Number);
-      const d = new Date();
-      d.setHours(h, m + minutes);
-      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    })();
-    updateReminder(r.id, { time: newTime });
-    showToast(`Snoozed ${minutes} min · new time ${newTime}`);
+    const d = new Date(Date.now() + minutes * 60000);
+    const newTime = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const newDate = ymd(d);
+    updateReminder(r.id, {
+      time: newTime,
+      date: newDate,
+      status: newDate === ymd(new Date()) ? 'today' : 'upcoming',
+    });
+    setShowSnooze(null);
+    showToast(`Snoozed · ${minutes} min`);
   };
 
   const handleReschedule = (r, { date, time }) => {
-    updateReminder(r.id, { date, time, status: 'upcoming' });
+    updateReminder(r.id, { date, time, status: date === ymd(new Date()) ? 'today' : 'upcoming' });
     setShowReschedule(null);
     showToast(`Rescheduled to ${date} · ${time}`);
   };
@@ -156,9 +346,14 @@ export default function Reminders() {
     updateReminder(calling.id, {
       notes: (calling.notes ? `${calling.notes}\n` : '') + `Call: ${payload.outcome} (${payload.duration})`,
       lastCallAt: new Date().toISOString(),
+      lastOutcome: payload.outcome,
     });
     setCalling(null);
     showToast(`Call logged · ${payload.outcome}`);
+  };
+
+  const handleSkip = (r) => {
+    handleSnooze(r, 60);
   };
 
   /* ================================================================
@@ -169,22 +364,59 @@ export default function Reminders() {
       <div className="pointer-events-none absolute -top-32 -right-32 h-96 w-96 rounded-full bg-brand-magenta/[0.05] blur-3xl" />
       <div className="pointer-events-none absolute top-1/2 -left-32 h-80 w-80 rounded-full bg-brand-purple/[0.05] blur-3xl" />
 
-      <div className="relative space-y-5 px-1 py-1">
+      <div className="relative space-y-5 px-1 py-1 pb-24">
         {/* ================= HEADER ================= */}
         <div>
           <h1 className="font-display text-xl font-semibold text-brand-ink">Reminders</h1>
           <p className="text-sm text-brand-ink/50">
-            Follow-ups, calls, callbacks and tasks you need to act on.
+            What do I need to act on right now?
           </p>
         </div>
 
-        {/* ================= KPI STRIP ================= */}
+        {/* ================= KPI STRIP (Today first) ================= */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <AnimatedStatCard label="Total"     value={summary.total}     sub="All reminders"    icon={Bell}          color="purple"  delay={0} />
-          <AnimatedStatCard label="Today"     value={summary.today}     sub="Due today"        icon={BellRing}      color="amber"   delay={40} />
-          <AnimatedStatCard label="Upcoming"  value={summary.upcoming}  sub="Next days"        icon={Calendar}      color="emerald" delay={80} />
-          <AnimatedStatCard label="Completed" value={summary.completed} sub="Done"             icon={CheckCircle2}  color="emerald" delay={120} />
+          <AnimatedStatCard
+            label="Today" value={summary.today} sub="All today"
+            icon={BellRing} color="purple" delay={0}
+            onClick={() => { setActiveTab('today'); setQuickFilter('All'); }}
+            active={activeTab === 'today' && quickFilter === 'All'}
+          />
+          <AnimatedStatCard
+            label="Overdue" value={summary.overdue} sub="Act immediately"
+            icon={AlertCircle} color="rose" delay={40}
+            onClick={() => { setActiveTab('overdue'); setQuickFilter('All'); }}
+            active={activeTab === 'overdue'}
+          />
+          <AnimatedStatCard
+            label="Due Now" value={summary.dueNow} sub="Within 15 min"
+            icon={Zap} color="amber" delay={80}
+            onClick={() => { setActiveTab('today'); setQuickFilter('due-now'); }}
+            active={quickFilter === 'due-now'}
+          />
+          <AnimatedStatCard
+            label="Upcoming" value={summary.upcoming} sub="Next days"
+            icon={Calendar} color="emerald" delay={120}
+            onClick={() => { setActiveTab('upcoming'); setQuickFilter('All'); }}
+            active={activeTab === 'upcoming'}
+          />
+          <AnimatedStatCard
+            label="Completed" value={summary.completed} sub="All time"
+            icon={CheckCircle2} color="emerald" delay={160}
+            onClick={() => { setActiveTab('completed'); setQuickFilter('All'); }}
+            active={activeTab === 'completed'}
+          />
         </div>
+
+        {/* ================= NEXT UP HERO ================= */}
+        {nextUp && (
+          <NextUpCard
+            reminder={nextUp}
+            onCall={() => handleCall(nextUp)}
+            onComplete={() => setShowComplete(nextUp)}
+            onSnooze={() => setShowSnooze(nextUp)}
+            onView={() => setSelected(nextUp)}
+          />
+        )}
 
         {/* ================= TABS + VIEW TOGGLE ================= */}
         <div className="card !p-2.5">
@@ -194,12 +426,13 @@ export default function Reminders() {
               const active = activeTab === t.key;
               const count =
                 t.key === 'today'     ? summary.today :
+                t.key === 'overdue'   ? summary.overdue :
                 t.key === 'upcoming'  ? summary.upcoming :
                                         summary.completed;
               return (
                 <button
                   key={t.key}
-                  onClick={() => setActiveTab(t.key)}
+                  onClick={() => { setActiveTab(t.key); setQuickFilter('All'); }}
                   className={`group inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-all duration-200 ${
                     active
                       ? 'bg-gradient-to-r from-brand-magenta to-brand-purple text-white shadow-[0_4px_14px_-4px_rgba(227,28,121,0.5)] scale-[1.02]'
@@ -208,6 +441,12 @@ export default function Reminders() {
                 >
                   <Icon size={13} />
                   {t.label}
+                  {t.live && !active && count > 0 && (
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-rose-500" />
+                    </span>
+                  )}
                   <span
                     className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
                       active ? 'bg-white/25 text-white' : 'bg-brand-lilac/70 text-brand-purple'
@@ -246,6 +485,37 @@ export default function Reminders() {
           </div>
         </div>
 
+        {/* ================= QUICK FILTER CHIPS ================= */}
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { key: 'All',       label: 'All' },
+            { key: 'high',      label: 'High Priority', icon: Flame },
+            { key: 'due-now',   label: 'Due Now',       icon: Zap },
+            { key: 'overdue',   label: 'Overdue',       icon: AlertCircle },
+            { key: 'callbacks', label: 'Callbacks',     icon: Phone },
+            { key: 'calls',     label: 'Calls',         icon: PhoneCall },
+            { key: 'followups', label: 'Follow-Ups',    icon: Calendar },
+            { key: 'tasks',     label: 'Tasks',         icon: ListChecks },
+          ].map((f) => {
+            const Icon = f.icon;
+            const active = quickFilter === f.key;
+            return (
+              <button
+                key={f.key}
+                onClick={() => setQuickFilter(f.key)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
+                  active
+                    ? 'border-brand-magenta bg-brand-magenta text-white shadow-card'
+                    : 'border-brand-lilac bg-white text-brand-ink/70 hover:border-brand-magenta/40 hover:text-brand-magenta'
+                }`}
+              >
+                {Icon && <Icon size={11} />}
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
+
         {/* ================= SEARCH + FILTERS ================= */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
@@ -280,6 +550,19 @@ export default function Reminders() {
             onChange={setTypeFilter}
           />
 
+          <DropdownFilter
+            label="Priority"
+            icon={Flame}
+            value={priorityFilter}
+            options={[
+              { value: 'All',    label: 'All Priorities' },
+              { value: 'High',   label: 'High' },
+              { value: 'Medium', label: 'Medium' },
+              { value: 'Low',    label: 'Low' },
+            ]}
+            onChange={setPriorityFilter}
+          />
+
           <span className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-4 py-2.5 text-sm font-semibold text-brand-ink">
             <ListFilter size={14} className="text-brand-magenta" />
             Showing: <span className="text-brand-magenta">{filtered.length}</span>
@@ -296,12 +579,11 @@ export default function Reminders() {
                 key={r.id}
                 reminder={r}
                 onView={() => setSelected(r)}
-                onComplete={() => handleComplete(r)}
-                onSnooze={() => handleSnooze(r, 15)}
+                onComplete={() => setShowComplete(r)}
+                onSnooze={() => setShowSnooze(r)}
                 onCall={() => handleCall(r)}
-                onNote={() => setShowNote(r)}
                 onReschedule={() => setShowReschedule(r)}
-                onDelete={() => setConfirmDelete(r)}
+                onSkip={() => handleSkip(r)}
               />
             ))}
           </div>
@@ -312,12 +594,11 @@ export default function Reminders() {
                 key={r.id}
                 reminder={r}
                 onView={() => setSelected(r)}
-                onComplete={() => handleComplete(r)}
-                onSnooze={() => handleSnooze(r, 15)}
+                onComplete={() => setShowComplete(r)}
+                onSnooze={() => setShowSnooze(r)}
                 onCall={() => handleCall(r)}
-                onNote={() => setShowNote(r)}
                 onReschedule={() => setShowReschedule(r)}
-                onDelete={() => setConfirmDelete(r)}
+                onSkip={() => handleSkip(r)}
               />
             ))}
           </div>
@@ -328,8 +609,8 @@ export default function Reminders() {
           <ReminderDrawer
             reminder={selected}
             onClose={() => setSelected(null)}
-            onComplete={() => { handleComplete(selected); setSelected(null); }}
-            onSnooze={() => { handleSnooze(selected, 15); setSelected(null); }}
+            onComplete={() => { setShowComplete(selected); setSelected(null); }}
+            onSnooze={() => { setShowSnooze(selected); setSelected(null); }}
             onCall={() => { handleCall(selected); setSelected(null); }}
             onNote={() => { setShowNote(selected); setSelected(null); }}
             onReschedule={() => { setShowReschedule(selected); setSelected(null); }}
@@ -350,6 +631,22 @@ export default function Reminders() {
             reminder={showReschedule}
             onClose={() => setShowReschedule(null)}
             onSave={handleReschedule}
+          />
+        )}
+
+        {showSnooze && (
+          <SnoozeModal
+            reminder={showSnooze}
+            onClose={() => setShowSnooze(null)}
+            onSave={handleSnooze}
+          />
+        )}
+
+        {showComplete && (
+          <CompleteModal
+            reminder={showComplete}
+            onClose={() => setShowComplete(null)}
+            onSave={handleComplete}
           />
         )}
 
@@ -378,33 +675,124 @@ export default function Reminders() {
 }
 
 /* ================================================================
-   REMINDER ROW — no dropdown, View Details button
+   NEXT UP HERO CARD
+   ================================================================ */
+function NextUpCard({ reminder, onCall, onComplete, onSnooze, onView }) {
+  const r = reminder;
+  const meta = TYPE_META[r.type] || TYPE_META.followup;
+  const Icon = meta.icon;
+  const canCall = r.type === 'call' || r.type === 'callback' || r.type === 'followup';
+  const timing = r._timing;
+
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border-2 border-brand-magenta/30 bg-gradient-to-r from-white via-white to-brand-lilac/30 shadow-[0_10px_30px_-15px_rgba(227,28,121,0.35)]">
+      <span className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-brand-magenta/15 blur-3xl" />
+      <span className="pointer-events-none absolute -bottom-10 left-1/3 h-32 w-32 rounded-full bg-brand-purple/15 blur-3xl" />
+      <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-magenta to-brand-purple" />
+
+      <div className="relative flex flex-wrap items-center gap-4 p-5">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-card">
+            <Zap size={20} />
+            <span className="absolute inset-0 -z-10 animate-ping rounded-full bg-brand-magenta/30" />
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand-magenta">
+                Next Up
+              </span>
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                timing.state === 'due-now'
+                  ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200'
+                  : 'bg-brand-mist text-brand-ink/60'
+              }`}>
+                <Timer size={9} />
+                {timing.label}
+              </span>
+            </div>
+
+            <p className="mt-1 truncate text-base font-semibold text-brand-ink">{r.title}</p>
+            <p className="truncate text-xs text-brand-ink/50">
+              {r.customer} · {r.mobile} · {meta.label}
+              {r.purpose ? ` · ${r.purpose}` : ''}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={onView}
+            className="flex h-9 items-center gap-1.5 rounded-xl border border-brand-lilac bg-white px-3 text-xs font-semibold text-brand-ink hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta"
+          >
+            <User size={12} /> View
+          </button>
+          <button
+            onClick={onSnooze}
+            className="flex h-9 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-600 hover:bg-amber-100"
+          >
+            <Clock size={12} /> Snooze
+          </button>
+          {canCall && (
+            <button
+              onClick={onCall}
+              className="flex h-9 items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-4 text-xs font-bold text-white shadow-card hover:brightness-110"
+            >
+              <Phone size={13} /> Call Now
+            </button>
+          )}
+          <button
+            onClick={onComplete}
+            className="flex h-9 items-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple px-4 text-xs font-bold text-white shadow-card hover:brightness-110"
+          >
+            <CheckCircle2 size={13} /> Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   REMINDER ROW
    ================================================================ */
 function ReminderRow({
-  reminder, onView, onComplete, onSnooze, onCall, onNote, onReschedule, onDelete,
+  reminder, onView, onComplete, onSnooze, onCall, onReschedule, onSkip,
 }) {
   const r = reminder;
   const meta = TYPE_META[r.type] || TYPE_META.followup;
   const Icon = meta.icon;
   const isDone = r.status === 'completed';
   const canCall = r.type === 'call' || r.type === 'callback' || r.type === 'followup';
+  const timing = r._timing;
+
+  const timingStyle =
+    timing.state === 'overdue' ? 'bg-rose-50 text-rose-600 ring-1 ring-rose-200' :
+    timing.state === 'due-now' ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' :
+    timing.state === 'completed' ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200' :
+    'bg-brand-mist text-brand-ink/60';
 
   return (
-    <div className="group relative flex flex-wrap items-center gap-3 rounded-xl border-2 border-brand-lilac/70 bg-white px-3 py-3 transition-all hover:border-brand-magenta/40 hover:shadow-md sm:flex-nowrap sm:gap-4 sm:px-4">
-      {/* Time block */}
-      <div className="flex h-12 w-16 shrink-0 flex-col items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta/10 to-brand-purple/10">
+    <div className={`group relative flex flex-wrap items-center gap-3 overflow-hidden rounded-xl border-2 bg-white px-3 py-3 transition-all hover:shadow-md sm:flex-nowrap sm:gap-4 sm:px-4 ${
+      timing.state === 'overdue' ? 'border-rose-200 hover:border-rose-400' :
+      timing.state === 'due-now' ? 'border-amber-200 hover:border-amber-400' :
+      'border-brand-lilac/70 hover:border-brand-magenta/40'
+    }`}>
+      <div className={`flex h-12 w-16 shrink-0 flex-col items-center justify-center rounded-lg ${
+        timing.state === 'overdue' ? 'bg-rose-50' :
+        timing.state === 'due-now' ? 'bg-amber-50' :
+        'bg-gradient-to-br from-brand-magenta/10 to-brand-purple/10'
+      }`}>
         <p className="font-display text-sm font-bold text-brand-ink">{r.time}</p>
         <p className="font-mono text-[9px] uppercase tracking-wide text-brand-ink/50">
           {r.date.slice(5)}
         </p>
       </div>
 
-      {/* Type icon */}
       <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${meta.tint}`}>
         <Icon size={15} />
       </span>
 
-      {/* Details */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <button
@@ -416,21 +804,25 @@ function ReminderRow({
           <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase ${PRIORITY_STYLES[r.priority]}`}>
             {r.priority}
           </span>
+          {r.purpose && (
+            <span className="hidden shrink-0 rounded-full bg-brand-lilac/50 px-2 py-0.5 text-[9px] font-semibold text-brand-purple sm:inline-block">
+              {r.purpose}
+            </span>
+          )}
         </div>
         <p className="truncate text-xs text-brand-ink/50">
           {r.customer} · {r.mobile} · {meta.label}
         </p>
       </div>
 
-      <span
-        className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${
-          isDone ? 'bg-emerald-100 text-emerald-600' : r.status === 'upcoming' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-700'
-        }`}
-      >
-        {r.status}
+      <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${timingStyle}`}>
+        {timing.state === 'overdue' && <AlertCircle size={9} />}
+        {timing.state === 'due-now' && <Zap size={9} />}
+        {timing.state === 'completed' && <CheckCircle2 size={9} />}
+        {timing.state === 'scheduled' && <Clock size={9} />}
+        {timing.label}
       </span>
 
-      {/* Actions */}
       <div className="flex shrink-0 items-center gap-1.5">
         {!isDone && (
           <>
@@ -450,6 +842,15 @@ function ReminderRow({
             >
               <CheckCircle2 size={12} /> Done
             </button>
+            {timing.state === 'overdue' && (
+              <button
+                onClick={onReschedule}
+                className="hidden h-8 items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-3 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta sm:flex"
+                title="Reschedule"
+              >
+                <RotateCcw size={12} />
+              </button>
+            )}
           </>
         )}
 
@@ -458,7 +859,7 @@ function ReminderRow({
           className="flex h-8 items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-3 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta"
           title="View details"
         >
-          <User size={12} /> View Details
+          <User size={12} /> View
         </button>
       </div>
     </div>
@@ -466,25 +867,33 @@ function ReminderRow({
 }
 
 /* ================================================================
-   REMINDER CARD — no dropdown, View Details button
+   REMINDER CARD
    ================================================================ */
 function ReminderCard({
-  reminder, onView, onComplete, onSnooze, onCall, onNote, onReschedule, onDelete,
+  reminder, onView, onComplete, onSnooze, onCall, onReschedule,
 }) {
   const r = reminder;
   const meta = TYPE_META[r.type] || TYPE_META.followup;
   const Icon = meta.icon;
   const isDone = r.status === 'completed';
   const canCall = r.type === 'call' || r.type === 'callback' || r.type === 'followup';
+  const timing = r._timing;
+
+  const accentBar =
+    timing.state === 'overdue' ? 'from-rose-500 to-rose-600' :
+    timing.state === 'due-now' ? 'from-amber-500 to-orange-500' :
+    timing.state === 'completed' ? 'from-emerald-500 to-emerald-600' :
+    'from-brand-magenta to-brand-purple';
 
   return (
-    <div className="group relative flex flex-col rounded-2xl border-2 border-brand-lilac/80 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-brand-magenta/50 hover:shadow-[0_20px_45px_-15px_rgba(227,28,121,0.25)]">
-      <span className="pointer-events-none absolute inset-x-0 top-0 h-1 overflow-hidden rounded-t-2xl">
-        <span className="block h-full w-full origin-left scale-x-0 bg-gradient-to-r from-brand-magenta to-brand-purple transition-transform duration-500 group-hover:scale-x-100" />
-      </span>
+    <div className={`group relative flex flex-col rounded-2xl border-2 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_45px_-15px_rgba(227,28,121,0.25)] ${
+      timing.state === 'overdue' ? 'border-rose-200 hover:border-rose-400' :
+      timing.state === 'due-now' ? 'border-amber-200 hover:border-amber-400' :
+      'border-brand-lilac/80 hover:border-brand-magenta/50'
+    }`}>
+      <span className={`pointer-events-none absolute inset-x-0 top-0 h-1 overflow-hidden rounded-t-2xl bg-gradient-to-r ${accentBar}`} />
 
       <div className="relative flex flex-1 flex-col p-4">
-        {/* Header: time + status */}
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="font-display text-lg font-bold leading-tight text-brand-ink">{r.time}</p>
@@ -492,16 +901,24 @@ function ReminderCard({
               {r.date}
             </p>
           </div>
-          <span
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold capitalize ${
-              isDone ? 'bg-emerald-100 text-emerald-600' : r.status === 'upcoming' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-700'
-            }`}
-          >
-            {r.status}
+          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${PRIORITY_STYLES[r.priority]}`}>
+            {r.priority}
           </span>
         </div>
 
-        {/* Type chip */}
+        <div className={`mt-3 inline-flex items-center gap-1.5 self-start rounded-full px-2 py-0.5 text-[10px] font-bold ${
+          timing.state === 'overdue' ? 'bg-rose-50 text-rose-600 ring-1 ring-rose-200' :
+          timing.state === 'due-now' ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' :
+          timing.state === 'completed' ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200' :
+          'bg-brand-mist text-brand-ink/60'
+        }`}>
+          {timing.state === 'overdue' && <AlertCircle size={9} />}
+          {timing.state === 'due-now' && <Zap size={9} />}
+          {timing.state === 'completed' && <CheckCircle2 size={9} />}
+          {timing.state === 'scheduled' && <Clock size={9} />}
+          {timing.label}
+        </div>
+
         <div className="mt-3 flex items-center gap-2">
           <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${meta.tint}`}>
             <Icon size={14} />
@@ -509,9 +926,13 @@ function ReminderCard({
           <span className="text-[11px] font-semibold uppercase tracking-wide text-brand-ink/50">
             {meta.label}
           </span>
+          {r.purpose && (
+            <span className="ml-auto rounded-full bg-brand-lilac/50 px-2 py-0.5 text-[9px] font-semibold text-brand-purple">
+              {r.purpose}
+            </span>
+          )}
         </div>
 
-        {/* Title + customer */}
         <button
           onClick={onView}
           className="mt-3 truncate text-left text-sm font-semibold text-brand-ink hover:text-brand-magenta"
@@ -522,17 +943,6 @@ function ReminderCard({
           {r.customer} · {r.mobile}
         </p>
 
-        {/* Meta row */}
-        <div className="mt-3 flex items-center gap-2">
-          <span className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase ${PRIORITY_STYLES[r.priority]}`}>
-            {r.priority}
-          </span>
-          {r.notes && (
-            <span className="truncate text-[10px] text-brand-ink/50">📝 {r.notes}</span>
-          )}
-        </div>
-
-        {/* Primary actions */}
         {!isDone ? (
           <div className="mt-4 grid grid-cols-2 gap-2">
             {canCall ? (
@@ -563,7 +973,6 @@ function ReminderCard({
           </div>
         )}
 
-        {/* View Details button replaces dropdown */}
         <button
           onClick={onView}
           className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white py-2 text-xs font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta"
@@ -576,7 +985,7 @@ function ReminderCard({
 }
 
 /* ================================================================
-   REMINDER DRAWER — all secondary actions live here
+   REMINDER DRAWER
    ================================================================ */
 function ReminderDrawer({ reminder, onClose, onComplete, onSnooze, onCall, onNote, onReschedule, onDelete }) {
   const r = reminder;
@@ -584,6 +993,9 @@ function ReminderDrawer({ reminder, onClose, onComplete, onSnooze, onCall, onNot
   const Icon = meta.icon;
   const isDone = r.status === 'completed';
   const canCall = r.type === 'call' || r.type === 'callback' || r.type === 'followup';
+  const timing = r._timing;
+
+  const history = r.history || [];
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
@@ -611,39 +1023,87 @@ function ReminderDrawer({ reminder, onClose, onComplete, onSnooze, onCall, onNot
                 {r.customer} · {r.mobile}
               </p>
             </div>
-            <span
-              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${
-                isDone ? 'bg-emerald-100 text-emerald-600' : r.status === 'upcoming' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-700'
-              }`}
-            >
-              {r.status}
-            </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase ${PRIORITY_STYLES[r.priority]}`}>
-              <Flame size={11} /> {r.priority} Priority
+              <Flame size={11} /> {r.priority}
             </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-brand-mist px-2.5 py-1 text-[11px] font-semibold text-brand-ink/70">
-              <Icon size={11} /> {meta.label}
+            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+              timing.state === 'overdue' ? 'bg-rose-50 text-rose-600 ring-1 ring-rose-200' :
+              timing.state === 'due-now' ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' :
+              timing.state === 'completed' ? 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200' :
+              'bg-brand-mist text-brand-ink/70'
+            }`}>
+              <Timer size={11} /> {timing.label}
             </span>
+            {r.purpose && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-brand-lilac/50 px-2.5 py-1 text-[11px] font-semibold text-brand-purple">
+                <Target size={11} /> {r.purpose}
+              </span>
+            )}
           </div>
 
           <div className="card !p-4 space-y-3">
-            <h4 className="font-display text-sm font-semibold text-brand-ink">Reminder Details</h4>
-            <Row icon={Calendar}  label="Date"     value={r.date} />
-            <Row icon={Clock}     label="Time"     value={r.time} />
-            <Row icon={User}      label="Customer" value={r.customer} />
-            <Row icon={Phone}     label="Mobile"   value={r.mobile} />
-            <Row icon={Tag}       label="Type"     value={meta.label} />
+            <h4 className="flex items-center gap-1.5 font-display text-sm font-semibold text-brand-ink">
+              <Sparkles size={12} className="text-brand-magenta" /> Lead Context
+            </h4>
+            <Row icon={Flame}       label="Stage"     value={r.leadStage || '—'} />
+            <Row icon={Building2}   label="Source"    value={r.source || '—'} />
+            <Row icon={Layers}      label="Campaign"  value={r.campaign || '—'} />
+            <Row icon={IndianRupee} label="Budget"    value={r.budget || '—'} />
+            <Row icon={MapPin}      label="Location"  value={r.location || '—'} />
+            <Row icon={Target}      label="Last Outcome" value={r.lastOutcome || '—'} />
+            {r.preferredContact && r.preferredContact !== '—' && (
+              <Row icon={Clock} label="Preferred Contact" value={r.preferredContact} />
+            )}
           </div>
+
+          <div className="card !p-4 space-y-3">
+            <h4 className="font-display text-sm font-semibold text-brand-ink">Reminder</h4>
+            <Row icon={Calendar} label="Date"     value={r.date} />
+            <Row icon={Clock}    label="Time"     value={r.time} />
+            <Row icon={Tag}      label="Type"     value={meta.label} />
+          </div>
+
+          {history.length > 0 && (
+            <div className="card !p-4 space-y-3">
+              <h4 className="flex items-center gap-1.5 font-display text-sm font-semibold text-brand-ink">
+                <History size={12} className="text-brand-magenta" /> Recent Activity
+              </h4>
+              <div className="space-y-2">
+                {history.map((h, i) => (
+                  <div key={i} className="flex items-center gap-3 rounded-lg border border-brand-lilac/60 bg-white p-2.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-mist text-brand-magenta">
+                      {h.icon === 'call' ? <Phone size={12} /> : h.icon === 'note' ? <StickyNote size={12} /> : <Calendar size={12} />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-brand-ink">
+                        {h.label}: <span className="font-normal text-brand-ink/70">{h.detail}</span>
+                      </p>
+                      <p className="text-[10px] text-brand-ink/40">{h.when}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {r.notes && (
             <div className="rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink/50">
-                Notes
+              <p className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand-ink/50">
+                <StickyNote size={10} /> Notes
               </p>
               <p className="whitespace-pre-line text-sm text-brand-ink/80">{r.notes}</p>
+            </div>
+          )}
+
+          {isDone && r.completionOutcome && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                <CheckCircle2 size={10} /> Completion Outcome
+              </p>
+              <p className="text-sm font-semibold text-emerald-700">{r.completionOutcome}</p>
             </div>
           )}
 
@@ -666,6 +1126,18 @@ function ReminderDrawer({ reminder, onClose, onComplete, onSnooze, onCall, onNot
                 >
                   <CheckCircle2 size={16} /> Complete
                 </button>
+              </div>
+
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-brand-ink/40">
+                  Quick Actions
+                </p>
+                <div className="grid grid-cols-4 gap-2">
+                  <QuickAction icon={MessageCircle} label="WhatsApp" />
+                  <QuickAction icon={MessageSquare} label="SMS" />
+                  <QuickAction icon={Mail}          label="Email" />
+                  <QuickAction icon={ExternalLink}  label="View Lead" />
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -700,6 +1172,15 @@ function ReminderDrawer({ reminder, onClose, onComplete, onSnooze, onCall, onNot
         </div>
       </div>
     </div>
+  );
+}
+
+function QuickAction({ icon: Icon, label }) {
+  return (
+    <button className="flex flex-col items-center gap-1 rounded-xl border border-brand-lilac bg-white p-2 text-center transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40">
+      <Icon size={14} className="text-brand-magenta" />
+      <span className="text-[10px] font-semibold text-brand-ink/70">{label}</span>
+    </button>
   );
 }
 
@@ -770,6 +1251,14 @@ function RescheduleModal({ reminder, onClose, onSave }) {
   const [date, setDate] = useState(reminder.date);
   const [time, setTime] = useState(reminder.time);
 
+  const today = new Date();
+  const suggestions = [
+    { label: 'Today',     date: ymd(today),                       time: '17:00' },
+    { label: 'Tomorrow',  date: ymd(new Date(today.getTime() + 86400000)), time: '10:00' },
+    { label: 'Tomorrow',  date: ymd(new Date(today.getTime() + 86400000)), time: '14:00' },
+    { label: 'Next week', date: ymd(new Date(today.getTime() + 7 * 86400000)), time: '10:00' },
+  ];
+
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-panel">
@@ -789,6 +1278,28 @@ function RescheduleModal({ reminder, onClose, onSave }) {
         </div>
 
         <div className="space-y-4">
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand-ink/40">
+              Suggested Times
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {suggestions.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => { setDate(s.date); setTime(s.time); }}
+                  className={`rounded-lg border px-3 py-2 text-left text-xs transition-all ${
+                    date === s.date && time === s.time
+                      ? 'border-brand-magenta bg-brand-magenta/10 text-brand-magenta'
+                      : 'border-brand-lilac bg-white text-brand-ink/70 hover:border-brand-magenta/40'
+                  }`}
+                >
+                  <p className="font-semibold">{s.label}</p>
+                  <p className="text-[10px] opacity-70">{s.time}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Date</label>
@@ -822,6 +1333,151 @@ function RescheduleModal({ reminder, onClose, onSave }) {
               className="flex-1 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110"
             >
               Reschedule
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   SNOOZE MODAL
+   ================================================================ */
+function SnoozeModal({ reminder, onClose, onSave }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-panel">
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+              <Clock size={18} />
+            </div>
+            <div>
+              <h3 className="font-display text-lg font-semibold text-brand-ink">Snooze</h3>
+              <p className="text-xs text-brand-ink/50">{reminder.title}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          {SNOOZE_PRESETS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => onSave(reminder, p.value)}
+              className="flex w-full items-center justify-between rounded-xl border border-brand-lilac bg-white px-4 py-3 text-sm font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-lilac/40 hover:text-brand-magenta"
+            >
+              <span>{p.label}</span>
+              <ChevronRight size={14} className="text-brand-ink/30" />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================
+   COMPLETE MODAL
+   ================================================================ */
+function CompleteModal({ reminder, onClose, onSave }) {
+  const [outcome, setOutcome] = useState('Customer contacted');
+  const [note, setNote] = useState('');
+  const [scheduleNext, setScheduleNext] = useState(false);
+  const [nextDate, setNextDate] = useState(() => ymd(new Date(Date.now() + 86400000)));
+  const [nextTime, setNextTime] = useState('10:00');
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-panel">
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
+              <CheckCircle2 size={18} />
+            </div>
+            <div>
+              <h3 className="font-display text-lg font-semibold text-brand-ink">Complete Reminder</h3>
+              <p className="text-xs text-brand-ink/50">{reminder.title}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-brand-ink/50 hover:bg-brand-lilac">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">What happened?</label>
+            <div className="grid grid-cols-2 gap-2">
+              {OUTCOME_OPTIONS.map((o) => (
+                <button
+                  key={o}
+                  onClick={() => setOutcome(o)}
+                  className={`rounded-lg border px-2.5 py-2 text-[11px] font-semibold transition-all ${
+                    outcome === o
+                      ? 'border-brand-magenta bg-brand-magenta/10 text-brand-magenta'
+                      : 'border-brand-lilac bg-white text-brand-ink/70 hover:bg-brand-lilac/30'
+                  }`}
+                >
+                  {o}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-brand-ink/70">Notes (optional)</label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              placeholder="Additional context..."
+              className="w-full rounded-xl border border-brand-lilac bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-magenta focus:ring-2 focus:ring-brand-magenta/15"
+            />
+          </div>
+
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-brand-ink/70">
+            <input
+              type="checkbox"
+              checked={scheduleNext}
+              onChange={(e) => setScheduleNext(e.target.checked)}
+              className="h-4 w-4 rounded border-brand-lilac accent-brand-magenta"
+            />
+            Schedule next follow-up
+          </label>
+
+          {scheduleNext && (
+            <div className="grid grid-cols-2 gap-2 rounded-xl border border-brand-lilac bg-brand-mist/40 p-3">
+              <input
+                type="date"
+                value={nextDate}
+                onChange={(e) => setNextDate(e.target.value)}
+                className="w-full rounded-lg border border-brand-lilac bg-white px-3 py-2 text-xs outline-none focus:border-brand-magenta"
+              />
+              <input
+                type="time"
+                value={nextTime}
+                onChange={(e) => setNextTime(e.target.value)}
+                className="w-full rounded-lg border border-brand-lilac bg-white px-3 py-2 text-xs outline-none focus:border-brand-magenta"
+              />
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={onClose}
+              className="flex-1 rounded-xl border border-brand-lilac py-2.5 text-sm font-semibold text-brand-ink hover:bg-brand-lilac/40"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onSave(reminder, outcome, note)}
+              className="flex-1 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple py-2.5 text-sm font-semibold text-white shadow-card hover:brightness-110"
+            >
+              Complete
             </button>
           </div>
         </div>
@@ -943,7 +1599,8 @@ function ConfirmDialog({ title, message, confirmLabel, onCancel, onConfirm }) {
    ================================================================ */
 function EmptyState({ tab }) {
   const messages = {
-    today:     'No reminders for today',
+    today:     'Nothing due today',
+    overdue:   'No overdue reminders — nice!',
     upcoming:  'No upcoming reminders',
     completed: 'No completed reminders yet',
   };
@@ -1009,12 +1666,12 @@ function DropdownFilter({ label, icon: Icon, value, options, onChange }) {
    ================================================================ */
 function Row({ icon: Icon, label, value }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-brand-lilac/60 pb-2">
+    <div className="flex items-center justify-between gap-2 border-b border-brand-lilac/60 pb-2 last:border-b-0 last:pb-0">
       <span className="flex shrink-0 items-center gap-1.5 text-brand-ink/50">
         {Icon && <Icon size={12} />}
         {label}
       </span>
-      <span className="truncate font-medium capitalize text-brand-ink">{value}</span>
+      <span className="truncate font-medium text-brand-ink">{value}</span>
     </div>
   );
 }
@@ -1047,7 +1704,7 @@ function useAnimatedCount(target, duration = 600) {
   return display.toLocaleString();
 }
 
-function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp, delay = 0 }) {
+function AnimatedStatCard({ label, value, sub, icon: Icon, color, delay = 0, onClick, active }) {
   const numeric = typeof value === 'number' ? value : 0;
   const animated = useAnimatedCount(numeric);
   const display = typeof value === 'number' ? animated : value;
@@ -1055,65 +1712,57 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp
   const themes = {
     purple: {
       border: 'border-violet-200 hover:border-violet-400',
+      activeBorder: 'border-violet-500 ring-2 ring-violet-200',
       bg: 'from-violet-50 via-violet-50/30 to-white',
       iconBg: 'bg-violet-100 text-brand-purple border-violet-200',
       bar: 'from-brand-purple to-brand-magenta',
-      glow: 'bg-brand-purple/25',
-      shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(139,47,214,0.45)]',
       valueColor: 'text-brand-purple',
     },
     emerald: {
       border: 'border-emerald-200 hover:border-emerald-400',
+      activeBorder: 'border-emerald-500 ring-2 ring-emerald-200',
       bg: 'from-emerald-50 via-emerald-50/30 to-white',
       iconBg: 'bg-emerald-100 text-emerald-600 border-emerald-200',
       bar: 'from-emerald-500 to-emerald-400',
-      glow: 'bg-emerald-500/25',
-      shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(16,185,129,0.4)]',
       valueColor: 'text-emerald-600',
     },
     amber: {
       border: 'border-amber-200 hover:border-amber-400',
+      activeBorder: 'border-amber-500 ring-2 ring-amber-200',
       bg: 'from-amber-50 via-amber-50/30 to-white',
       iconBg: 'bg-amber-100 text-amber-600 border-amber-200',
       bar: 'from-amber-500 to-orange-400',
-      glow: 'bg-amber-500/25',
-      shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(245,158,11,0.4)]',
       valueColor: 'text-amber-600',
     },
     rose: {
       border: 'border-rose-200 hover:border-rose-400',
+      activeBorder: 'border-rose-500 ring-2 ring-rose-200',
       bg: 'from-rose-50 via-rose-50/30 to-white',
       iconBg: 'bg-rose-100 text-brand-magenta border-rose-200',
       bar: 'from-brand-magenta to-brand-purple',
-      glow: 'bg-brand-magenta/25',
-      shadow: 'hover:shadow-[0_15px_40px_-15px_rgba(227,28,121,0.45)]',
       valueColor: 'text-brand-magenta',
     },
   };
   const t = themes[color] || themes.purple;
+  const clickable = typeof onClick === 'function';
 
   return (
-    <div
+    <button
+      onClick={onClick}
+      disabled={!clickable}
       style={{ animationDelay: `${delay}ms` }}
-      className={`group relative overflow-hidden rounded-2xl border-2 bg-white p-4 shadow-sm transition-all duration-500 hover:-translate-y-1 animate-fade-slide-in ${t.border} ${t.shadow}`}
+      className={`group relative overflow-hidden rounded-2xl border-2 bg-white p-4 text-left shadow-sm transition-all duration-500 animate-fade-slide-in ${
+        active ? t.activeBorder : t.border
+      } ${clickable ? 'hover:-translate-y-1 hover:shadow-lg' : ''}`}
     >
       <span className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${t.bg} opacity-0 transition-opacity duration-500 group-hover:opacity-100`} />
-      <span className={`absolute inset-x-0 top-0 h-1 origin-left scale-x-0 bg-gradient-to-r ${t.bar} transition-transform duration-500 group-hover:scale-x-100`} />
-      <span className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full ${t.glow} opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100`} />
+      <span className={`absolute inset-x-0 top-0 h-1 origin-left bg-gradient-to-r ${t.bar} transition-transform duration-500 ${active ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100'}`} />
 
       <div className="relative">
         <div className="flex items-start justify-between">
           <span className={`flex h-10 w-10 items-center justify-center rounded-xl border ${t.iconBg} transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6`}>
             <Icon size={18} />
           </span>
-          {trend && (
-            <span className={`flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-              trendUp ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-rose-200 bg-rose-50 text-rose-500'
-            }`}>
-              {trendUp ? <TrendingUp size={10} /> : null}
-              {trend}
-            </span>
-          )}
         </div>
         <p className={`mt-3 font-display text-3xl font-bold leading-tight tabular-nums ${t.valueColor}`}>
           {display}
@@ -1121,7 +1770,7 @@ function AnimatedStatCard({ label, value, sub, icon: Icon, color, trend, trendUp
         <p className="mt-0.5 text-xs font-semibold text-brand-ink/70">{label}</p>
         {sub && <p className="mt-0.5 text-[10px] text-brand-ink/40">{sub}</p>}
       </div>
-    </div>
+    </button>
   );
 }
 
