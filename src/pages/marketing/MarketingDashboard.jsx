@@ -4,9 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import {
   Megaphone, Target, Users, TrendingUp, Award, ArrowRight,
   BarChart3, Sparkles, CheckCircle2, Building2, Layers,
-  Calendar, RefreshCw, Download, Phone, Share2, Globe,
-  XCircle, AlertTriangle, Plus, UserPlus, ListChecks,
-  Zap, DollarSign, Percent, Eye, Filter, Clock, FileText, // ✅ FIX: Added FileText
+  Calendar, RefreshCw, Download, Share2, Globe,
+  XCircle, AlertTriangle, UserPlus, ListChecks,
+  Zap, DollarSign, Percent, Clock, FileText,
 } from 'lucide-react';
 
 import {
@@ -311,18 +311,18 @@ export default function MarketingDashboard() {
           <SectionTitle eyebrow="Live Metrics" title="Marketing KPIs" />
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
-            <KPICard icon={Megaphone}      label="Total Campaigns"     value={metrics.totalCampaigns}    color="purple"  sub="All time"           to={ROUTES.campaigns}   delay={0} />
-            <KPICard icon={Zap}            label="Active Campaigns"    value={metrics.activeCampaigns}   color="emerald" sub="Running now"        to={ROUTES.campaigns}   delay={40} />
-            <KPICard icon={Target}         label="Total Leads"         value={metrics.totalLeads}        color="rose"    sub="All marketing"      to={ROUTES.leads}       delay={80} />
-            <KPICard icon={Sparkles}       label="Today's Leads"       value={metrics.todaysLeads}       color="purple"  sub="Captured today"     to={ROUTES.leads}       delay={120} />
-            <KPICard icon={Clock}          label="Pending Leads"       value={metrics.pendingLeads}      color="amber"   sub="Awaiting review"    to={ROUTES.leads}       alert={metrics.pendingLeads > 0} delay={160} />
-            <KPICard icon={CheckCircle2}   label="Qualified Leads"     value={metrics.qualifiedLeads}    color="emerald" sub="Ready to convert"   to={ROUTES.handover}    delay={200} />
-            <KPICard icon={Award}          label="Converted Leads"     value={metrics.convertedLeads}    color="emerald" sub={`${metrics.conversionRate}% rate`} to={ROUTES.performance} delay={240} />
-            <KPICard icon={XCircle}        label="Lost Leads"          value={metrics.lostLeads}         color="rose"    sub="Not converted"      to={ROUTES.leads}       delay={280} />
-            <KPICard icon={DollarSign}     label="Total Ad Spend"      value={`$${metrics.totalAdSpend.toLocaleString()}`} color="purple" sub="Across campaigns" to={ROUTES.performance} delay={320} />
-            <KPICard icon={TrendingUp}     label="Cost Per Lead"       value={`$${metrics.costPerLead.toFixed(2)}`} color="amber" sub="Blended average" to={ROUTES.performance} delay={360} />
-            <KPICard icon={Percent}        label="Conversion Rate"    value={`${metrics.conversionRate}%`} color="rose"  sub="Leads → Converted"  to={ROUTES.performance} delay={400} />
-            <KPICard icon={Calendar}       label="Pending Follow-ups"  value={metrics.pendingFollowUps}  color="purple"  sub="Needs action"       to={ROUTES.tasks}       alert={metrics.pendingFollowUps > 0} delay={440} />
+            <KPICard icon={Megaphone}    label="Total Campaigns"    value={metrics.totalCampaigns}    color="purple"  sub="All time"          to={ROUTES.campaigns}   delay={0} />
+            <KPICard icon={Zap}          label="Active Campaigns"   value={metrics.activeCampaigns}   color="emerald" sub="Running now"       to={ROUTES.campaigns}   delay={40} />
+            <KPICard icon={Target}       label="Total Leads"        value={metrics.totalLeads}        color="rose"    sub="All marketing"     to={ROUTES.leads}       delay={80} />
+            <KPICard icon={Sparkles}     label="Today's Leads"      value={metrics.todaysLeads}       color="purple"  sub="Captured today"    to={ROUTES.leads}       delay={120} />
+            <KPICard icon={Clock}        label="Pending Leads"      value={metrics.pendingLeads}      color="amber"   sub="Awaiting review"   to={ROUTES.leads}       alert={metrics.pendingLeads > 0} delay={160} />
+            <KPICard icon={CheckCircle2} label="Qualified Leads"    value={metrics.qualifiedLeads}    color="emerald" sub="Ready to convert"  to={ROUTES.handover}    delay={200} />
+            <KPICard icon={Award}        label="Converted Leads"    value={metrics.convertedLeads}    color="emerald" sub={`${metrics.conversionRate}% rate`} to={ROUTES.performance} delay={240} />
+            <KPICard icon={XCircle}      label="Lost Leads"         value={metrics.lostLeads}         color="rose"    sub="Not converted"     to={ROUTES.leads}       delay={280} />
+            <KPICard icon={DollarSign}   label="Total Ad Spend"     value={`$${metrics.totalAdSpend.toLocaleString()}`} color="purple" sub="Across campaigns" to={ROUTES.performance} delay={320} />
+            <KPICard icon={TrendingUp}   label="Cost Per Lead"      value={`$${metrics.costPerLead.toFixed(2)}`} color="amber" sub="Blended average" to={ROUTES.performance} delay={360} />
+            <KPICard icon={Percent}      label="Conversion Rate"    value={`${metrics.conversionRate}%`} color="rose"  sub="Leads → Converted" to={ROUTES.performance} delay={400} />
+            <KPICard icon={Calendar}     label="Pending Follow-ups" value={metrics.pendingFollowUps}  color="purple"  sub="Needs action"      to={ROUTES.tasks}       alert={metrics.pendingFollowUps > 0} delay={440} />
           </div>
         </div>
 
@@ -400,7 +400,13 @@ export default function MarketingDashboard() {
                       <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#6b5b7e', fontWeight: 600 }} axisLine={false} tickLine={false} dy={6} />
                       <YAxis tick={{ fontSize: 11, fill: '#8b7a9e' }} axisLine={false} tickLine={false} allowDecimals={false} />
                       <Tooltip content={<CustomTooltip />} cursor={{ fill: '#F1E4FB', radius: 8 }} />
-                      <Bar dataKey={chartView} fill="url(#mktBarGrad)" radius={[8, 8, 2, 2]} barSize={26} />
+                      <Bar
+                        dataKey={chartView === 'leads' ? 'leads' : chartView === 'qualified' ? 'qualified' : 'leads'}
+                        fill="url(#mktBarGrad)"
+                        radius={[8, 8, 2, 2]}
+                        barSize={26}
+                        name={chartView === 'leads' ? 'Leads' : chartView === 'qualified' ? 'Qualified' : 'Leads'}
+                      />
                     </BarChart>
                   )}
                 </ResponsiveContainer>
@@ -690,6 +696,7 @@ export default function MarketingDashboard() {
 
         {/* ================= 8 QUICK ACTIONS ================= */}
         <div className="space-y-3">
+          <SectionTitle eyebrow="Shortcuts" title="Quick Actions" hint="Jump straight to common tasks" />
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
             {[
