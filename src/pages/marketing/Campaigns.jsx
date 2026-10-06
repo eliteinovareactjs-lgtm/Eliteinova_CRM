@@ -2,14 +2,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Megaphone, Plus, Play, Pause, X, Search, Filter, ChevronDown,
-  MoreVertical, Eye, Pencil, Trash2, BarChart3, TrendingUp,
+  Eye, Pencil, Trash2, BarChart3, TrendingUp,
   TrendingDown, Users, Layers, Target, PhoneCall, Headphones,
   Percent, Check, AlertCircle, CheckCircle2, Download, Calendar,
   Clock, Repeat, Timer, Info, Save, Star, Award, Zap, ArrowRight,
   PhoneOff, MessageSquare, Copy, Briefcase, Hash, Sparkles, Radio,
   ListChecks, PhoneOutgoing, PhoneIncoming, PhoneMissed, Circle,
   XCircle, ClipboardList, UserPlus, RefreshCw, Grid3x3, List,
-  MoreHorizontal, CheckSquare, Flag, Activity, Globe, DollarSign,
+  CheckSquare, Flag, Activity, Globe, DollarSign,
   Inbox, CircleDot, Flame, User,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -52,7 +52,6 @@ const uid = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).sl
 /* CSV formula-injection guard */
 const csvCell = (v) => {
   let s = String(v ?? '');
-  // Prefix risky leading chars so spreadsheets don't execute them
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
 };
@@ -63,7 +62,6 @@ const loadState = (fallback) => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        // Normalize so any legacy/partial record still renders safely
         return parsed.map((c) => ({
           ...c,
           leads: c.leads ?? 0,
@@ -102,7 +100,7 @@ const formatShortDate = (val) => {
 const formatCurrency = (n) => `$${Number(n || 0).toLocaleString('en-US')}`;
 
 /* ═══════════════════════════════════════════════════════════════
-   SEED DATA (stable IDs)
+   SEED DATA
    ═══════════════════════════════════════════════════════════════ */
 const SEED_CAMPAIGNS = [
   {
@@ -205,7 +203,6 @@ export default function Campaigns() {
   const [typeFilter, setTypeFilter] = useState('All');
   const [typeOpen, setTypeOpen] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
-  const [menuOpenId, setMenuOpenId] = useState(null);
   const [toast, setToast] = useState(null);
 
   const [showModal, setShowModal] = useState(false);
@@ -278,7 +275,6 @@ export default function Campaigns() {
   const handleDelete = (id) => {
     setCampaigns((prev) => prev.filter((c) => c.id !== id));
     setConfirmDelete(null);
-    setMenuOpenId(null);
     showToast('Campaign deleted', 'error');
   };
 
@@ -290,32 +286,27 @@ export default function Campaigns() {
       createdAt: new Date().toISOString(),
     };
     setCampaigns((prev) => [copy, ...prev]);
-    setMenuOpenId(null);
     showToast('Campaign duplicated');
   };
 
   const handleStatusChange = (id, newStatus) => {
     const target = campaigns.find((c) => c.id === id);
-    // Consistent with handleToggle: Completed is terminal unless explicitly re-activated
     if (target && target.status === 'Completed' && newStatus !== 'Completed') {
       showToast('Completed campaigns cannot be reopened. Duplicate it instead.', 'error');
-      setMenuOpenId(null);
       return;
     }
+    if (target && target.status === newStatus) return;
     setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)));
-    setMenuOpenId(null);
     showToast(`Status → ${newStatus}`);
   };
 
   const handleToggle = (id, currentStatus) => {
     if (currentStatus === 'Completed') {
       showToast('Completed campaigns cannot be restarted.', 'error');
-      setMenuOpenId(null);
       return;
     }
     const newStatus = currentStatus === 'Active' ? 'Paused' : 'Active';
     setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c)));
-    setMenuOpenId(null);
     showToast(newStatus === 'Active' ? 'Campaign resumed' : 'Campaign paused');
   };
 
@@ -341,6 +332,11 @@ export default function Campaigns() {
 
   const hasFilters = searchQuery || statusFilter !== 'All' || typeFilter !== 'All';
   const clearFilters = () => { setSearchQuery(''); setStatusFilter('All'); setTypeFilter('All'); };
+
+  const openView = (c) => setViewing(c);
+  const openEdit = (c) => { setEditing(c); setShowModal(true); };
+  const openMonitor = (c) => setMonitoring(c);
+  const openDelete = (c) => setConfirmDelete(c);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#FDF8FE] via-white to-[#FBF3FF]">
@@ -473,40 +469,29 @@ export default function Campaigns() {
           <EmptyState hasFilters={hasFilters} onClear={clearFilters} onCreate={() => { setEditing(null); setShowModal(true); }} />
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 gap-4 pb-40 md:grid-cols-2 xl:grid-cols-3">
-            {filtered.map((c, index) => (
+            {filtered.map((c) => (
               <CampaignCard
                 key={c.id}
                 campaign={c}
-                index={index}
-                total={filtered.length}
-                menuOpenId={menuOpenId}
-                setMenuOpenId={setMenuOpenId}
-                onView={() => setViewing(c)}
-                onEdit={() => { setEditing(c); setShowModal(true); }}
+                onView={() => openView(c)}
+                onEdit={() => openEdit(c)}
                 onToggle={() => handleToggle(c.id, c.status)}
-                onMonitoring={() => setMonitoring(c)}
-                onDuplicate={() => handleDuplicate(c)}
-                onDelete={() => { setConfirmDelete(c); setMenuOpenId(null); }}
-                onStatusChange={handleStatusChange}
+                onMonitoring={() => openMonitor(c)}
+                onDelete={() => openDelete(c)}
               />
             ))}
           </div>
         ) : (
           <div className="space-y-2 pb-40">
-            {filtered.map((c, index) => (
+            {filtered.map((c) => (
               <CampaignRow
                 key={c.id}
                 campaign={c}
-                isLast={index === filtered.length - 1}
-                menuOpenId={menuOpenId}
-                setMenuOpenId={setMenuOpenId}
-                onView={() => setViewing(c)}
-                onEdit={() => { setEditing(c); setShowModal(true); }}
+                onView={() => openView(c)}
+                onEdit={() => openEdit(c)}
                 onToggle={() => handleToggle(c.id, c.status)}
-                onMonitoring={() => setMonitoring(c)}
-                onDuplicate={() => handleDuplicate(c)}
-                onDelete={() => { setConfirmDelete(c); setMenuOpenId(null); }}
-                onStatusChange={handleStatusChange}
+                onMonitoring={() => openMonitor(c)}
+                onDelete={() => openDelete(c)}
               />
             ))}
           </div>
@@ -530,6 +515,7 @@ export default function Campaigns() {
             onEdit={() => { setEditing(viewing); setViewing(null); setShowModal(true); }}
             onMonitoring={() => { setMonitoring(viewing); setViewing(null); }}
             onToggle={() => { handleToggle(viewing.id, viewing.status); setViewing(null); }}
+            onStatusChange={(s) => handleStatusChange(viewing.id, s)}
           />
         )}
 
@@ -641,10 +627,25 @@ function useAnimatedCount(target, duration = 600) {
    DROPDOWN FILTER
    ═══════════════════════════════════════════════════════════════ */
 function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onChange }) {
+  const triggerRef = useRef(null);
+  const [openUp, setOpenUp] = useState(false);
+
+  const handleToggle = () => {
+    if (!open) {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) {
+        const spaceBelow = window.innerHeight - rect.bottom;
+        setOpenUp(spaceBelow < 320);
+      }
+    }
+    onToggle();
+  };
+
   return (
     <div className="relative">
       <button
-        onClick={onToggle}
+        ref={triggerRef}
+        onClick={handleToggle}
         aria-expanded={open}
         className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-4 py-2.5 text-sm font-medium text-brand-ink hover:bg-brand-lilac/40"
       >
@@ -655,7 +656,7 @@ function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onC
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={onToggle} />
-          <div className="absolute right-0 top-full z-30 mt-2 max-h-72 w-56 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 shadow-panel">
+          <div className={`absolute right-0 ${openUp ? 'bottom-full mb-2' : 'top-full mt-2'} z-30 max-h-72 w-56 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 shadow-panel`}>
             {options.map((o) => (
               <button
                 key={o}
@@ -677,7 +678,7 @@ function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onC
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   INFO LINE HELPER (aligned grid)
+   INFO LINE HELPER
    ═══════════════════════════════════════════════════════════════ */
 function InfoLine({ icon: Icon, label, value }) {
   return (
@@ -692,10 +693,9 @@ function InfoLine({ icon: Icon, label, value }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   CAMPAIGN CARD (GRID) — aligned layout
-   Uses viewport measurement so menus don't clip.
+   CAMPAIGN CARD (GRID) — View · Monitor · Edit · Delete visible
    ═══════════════════════════════════════════════════════════════ */
-function CampaignCard({ campaign: c, menuOpenId, setMenuOpenId, onView, onEdit, onToggle, onMonitoring, onDuplicate, onDelete, onStatusChange }) {
+function CampaignCard({ campaign: c, onView, onEdit, onToggle, onMonitoring, onDelete }) {
   const st = STATUS_STYLES[c.status] || STATUS_STYLES.Draft;
   const StatusIcon = st.icon;
   const health = campaignHealth(c);
@@ -707,26 +707,12 @@ function CampaignCard({ campaign: c, menuOpenId, setMenuOpenId, onView, onEdit, 
   const isCompleted = c.status === 'Completed';
   const isActive = c.status === 'Active';
 
-  const triggerRef = useRef(null);
-  const [openUp, setOpenUp] = useState(false);
-
-  const handleOpenMenu = () => {
-    const isOpen = menuOpenId === c.id;
-    if (isOpen) { setMenuOpenId(null); return; }
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setOpenUp(spaceBelow < 300); // 300px ≈ menu max height
-    }
-    setMenuOpenId(c.id);
-  };
-
   return (
     <div className="group relative flex flex-col rounded-2xl border-2 border-brand-lilac/80 bg-white shadow-sm transition-all duration-500 hover:-translate-y-1.5 hover:border-brand-magenta/50 hover:shadow-[0_20px_45px_-15px_rgba(227,28,121,0.25)]">
       <span className="pointer-events-none absolute inset-x-0 top-0 h-1 origin-left scale-x-0 rounded-t-2xl bg-gradient-to-r from-brand-magenta to-brand-purple transition-transform duration-500 group-hover:scale-x-100" />
 
       <div className="relative flex flex-1 flex-col p-5">
-        {/* ─── HEADER ─── */}
+        {/* HEADER */}
         <div className="flex items-start gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-md transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3">
             <Megaphone size={20} />
@@ -747,72 +733,9 @@ function CampaignCard({ campaign: c, menuOpenId, setMenuOpenId, onView, onEdit, 
             <StatusIcon size={10} className="mr-1 inline" />
             {c.status}
           </span>
-
-          {/* Dropdown menu */}
-          <div className="relative">
-            <button
-              ref={triggerRef}
-              aria-label="Campaign actions"
-              aria-expanded={menuOpenId === c.id}
-              onClick={handleOpenMenu}
-              className="shrink-0 rounded-lg p-1.5 text-brand-ink/40 transition-colors hover:bg-brand-lilac"
-            >
-              <MoreVertical size={14} />
-            </button>
-            {menuOpenId === c.id && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-                <div
-                  className={`absolute right-0 ${
-                    openUp ? 'bottom-full mb-2' : 'top-full mt-2'
-                  } z-30 max-h-72 w-52 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 shadow-panel`}
-                >
-                  <MenuItem icon={Eye}       label="View Details"  onClick={() => { onView(); setMenuOpenId(null); }} />
-                  <MenuItem icon={Pencil}    label="Edit Campaign" onClick={() => { onEdit(); setMenuOpenId(null); }} />
-                  <MenuItem icon={BarChart3} label="Monitoring"    onClick={() => { onMonitoring(); setMenuOpenId(null); }} />
-                  <MenuItem icon={Copy}      label="Duplicate"     onClick={() => onDuplicate()} />
-
-                  {!isCompleted && (
-                    <MenuItem
-                      icon={isActive ? Pause : Play}
-                      label={isActive ? 'Pause' : 'Start'}
-                      onClick={() => onToggle()}
-                    />
-                  )}
-
-                  <div className="my-1 h-px bg-brand-lilac/60" />
-
-                  <p className="px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-brand-ink/40">
-                    Set Status
-                  </p>
-
-                  {CAMPAIGN_STATUSES.map((s) => {
-                    const cs = STATUS_STYLES[s];
-                    const SIcon = cs.icon;
-                    return (
-                      <button
-                        key={s}
-                        onClick={() => onStatusChange(c.id, s)}
-                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs ${
-                          c.status === s
-                            ? 'bg-brand-magenta/10 font-semibold text-brand-magenta'
-                            : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-                        }`}
-                      >
-                        <SIcon size={12} /> {s}
-                      </button>
-                    );
-                  })}
-
-                  <div className="my-1 h-px bg-brand-lilac/60" />
-                  <MenuItem icon={Trash2} label="Delete" danger onClick={() => { onDelete(); setMenuOpenId(null); }} />
-                </div>
-              </>
-            )}
-          </div>
         </div>
 
-        {/* ─── INFO ROWS (aligned) ─── */}
+        {/* INFO ROWS */}
         <div className="mt-4 space-y-2 rounded-xl border border-brand-lilac/60 bg-gradient-to-br from-brand-mist/80 to-brand-mist/40 p-3 text-xs">
           <InfoLine icon={Calendar}   label="Duration" value={`${formatShortDate(c.startDate)} → ${formatShortDate(c.endDate)}`} />
           <InfoLine icon={Globe}      label="Channel"  value={c.channel} />
@@ -820,20 +743,20 @@ function CampaignCard({ campaign: c, menuOpenId, setMenuOpenId, onView, onEdit, 
           <InfoLine icon={DollarSign} label="Budget"   value={formatCurrency(c.budget)} />
         </div>
 
-        {/* ─── METRICS ─── */}
+        {/* METRICS */}
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">
           <MiniBox label="Leads"     value={c.leads ?? 0}     tone="purple" />
           <MiniBox label="Qualified" value={c.qualified ?? 0} tone="emerald" />
           <MiniBox label="Converted" value={c.converted ?? 0} tone="rose" />
         </div>
 
-        {/* ─── PROGRESS BARS ─── */}
+        {/* PROGRESS */}
         <div className="mt-3 space-y-2">
           <ProgressBar label="Target Progress" value={progress}       tone="amber" />
           <ProgressBar label="Conversion Rate" value={conversionRate} tone="emerald" />
         </div>
 
-        {/* ─── CPL + HEALTH (aligned 2-col grid) ─── */}
+        {/* CPL + HEALTH */}
         <div className="mt-3 grid grid-cols-2 items-center gap-2 rounded-xl border border-brand-lilac/60 bg-brand-mist/40 px-3 py-2">
           <div className="min-w-0">
             <p className="font-mono text-[9px] uppercase tracking-wider text-brand-ink/50">Cost Per Lead</p>
@@ -849,47 +772,67 @@ function CampaignCard({ campaign: c, menuOpenId, setMenuOpenId, onView, onEdit, 
           </div>
         </div>
 
-        {/* ─── ACTIONS (equal width) ─── */}
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        {/* ACTIONS: View · Monitor · Edit · Delete */}
+        <div className="mt-4 grid grid-cols-4 gap-2">
           <button
             onClick={onView}
-            className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white px-2 py-2 text-xs font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+            className="flex min-w-0 items-center justify-center gap-1 rounded-xl border border-brand-lilac bg-white px-1.5 py-2 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+            title="View details"
           >
             <Eye size={12} className="shrink-0" />
             <span className="truncate">View</span>
           </button>
           <button
             onClick={onMonitoring}
-            className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white px-2 py-2 text-xs font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+            className="flex min-w-0 items-center justify-center gap-1 rounded-xl border border-brand-lilac bg-white px-1.5 py-2 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+            title="Monitor"
           >
             <BarChart3 size={12} className="shrink-0" />
             <span className="truncate">Monitor</span>
           </button>
           <button
-            onClick={onToggle}
-            disabled={isCompleted}
-            className={`flex min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-semibold text-white shadow-card transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 ${
-              isActive
-                ? 'bg-gradient-to-r from-amber-500 to-amber-600'
-                : isCompleted
-                ? 'bg-gradient-to-r from-slate-400 to-slate-500'
-                : 'bg-gradient-to-r from-brand-magenta to-brand-purple'
-            }`}
+            onClick={onEdit}
+            className="flex min-w-0 items-center justify-center gap-1 rounded-xl border border-brand-lilac bg-white px-1.5 py-2 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+            title="Edit campaign"
           >
-            {isActive ? <><Pause size={12} className="shrink-0" /><span className="truncate">Pause</span></> :
-             isCompleted ? <><Check size={12} className="shrink-0" /><span className="truncate">Done</span></> :
-             <><Play size={12} className="shrink-0" /><span className="truncate">Start</span></>}
+            <Pencil size={12} className="shrink-0" />
+            <span className="truncate">Edit</span>
+          </button>
+          <button
+            onClick={onDelete}
+            className="flex min-w-0 items-center justify-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-1.5 py-2 text-[11px] font-semibold text-rose-500 transition-all hover:bg-rose-100"
+            title="Delete campaign"
+          >
+            <Trash2 size={12} className="shrink-0" />
+            <span className="truncate">Delete</span>
           </button>
         </div>
+
+        {/* Secondary toggle button (Start/Pause) */}
+        <button
+          onClick={onToggle}
+          disabled={isCompleted}
+          className={`mt-2 flex w-full min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-semibold text-white shadow-card transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 ${
+            isActive
+              ? 'bg-gradient-to-r from-amber-500 to-amber-600'
+              : isCompleted
+              ? 'bg-gradient-to-r from-slate-400 to-slate-500'
+              : 'bg-gradient-to-r from-brand-magenta to-brand-purple'
+          }`}
+        >
+          {isActive ? <><Pause size={12} className="shrink-0" /><span className="truncate">Pause Campaign</span></> :
+           isCompleted ? <><Check size={12} className="shrink-0" /><span className="truncate">Completed</span></> :
+           <><Play size={12} className="shrink-0" /><span className="truncate">Start Campaign</span></>}
+        </button>
       </div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   CAMPAIGN ROW (LIST)
+   CAMPAIGN ROW (LIST) — View · Monitor · Edit · Delete visible
    ═══════════════════════════════════════════════════════════════ */
-function CampaignRow({ campaign: c, isLast, menuOpenId, setMenuOpenId, onView, onEdit, onToggle, onMonitoring, onDuplicate, onDelete, onStatusChange }) {
+function CampaignRow({ campaign: c, onView, onEdit, onToggle, onMonitoring, onDelete }) {
   const st = STATUS_STYLES[c.status] || STATUS_STYLES.Draft;
   const StatusIcon = st.icon;
   const conversionRate = c.leads ? Math.round((c.converted / c.leads) * 100) : 0;
@@ -934,105 +877,57 @@ function CampaignRow({ campaign: c, isLast, menuOpenId, setMenuOpenId, onView, o
         <p className="font-semibold tabular-nums text-emerald-600">{conversionRate}%</p>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
         <button
           onClick={onView}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
           title="View"
         >
-          <Eye size={13} />
+          <Eye size={12} /> View
         </button>
         <button
           onClick={onMonitoring}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
-          title="Monitoring"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+          title="Monitor"
         >
-          <BarChart3 size={13} />
+          <BarChart3 size={12} /> Monitor
+        </button>
+        <button
+          onClick={onEdit}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-magenta to-brand-purple px-2.5 text-[11px] font-semibold text-white shadow-card transition-all hover:brightness-110"
+          title="Edit"
+        >
+          <Pencil size={12} /> Edit
         </button>
         <button
           onClick={onToggle}
           disabled={isCompleted}
-          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-white shadow-card hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 ${
+          className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-white shadow-card transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 ${
             isActive
               ? 'bg-gradient-to-r from-amber-500 to-amber-600'
               : isCompleted
               ? 'bg-gradient-to-r from-slate-400 to-slate-500'
               : 'bg-gradient-to-r from-brand-magenta to-brand-purple'
           }`}
+          title={isActive ? 'Pause' : isCompleted ? 'Completed' : 'Start'}
         >
           {isActive ? <><Pause size={11} /> Pause</> : isCompleted ? <><Check size={11} /> Done</> : <><Play size={11} /> Start</>}
         </button>
-
-        <div className="relative">
-          <button
-            aria-label="Campaign actions"
-            onClick={() => setMenuOpenId(menuOpenId === c.id ? null : c.id)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-brand-ink/40 transition-colors hover:bg-brand-lilac"
-          >
-            <MoreVertical size={14} />
-          </button>
-          {menuOpenId === c.id && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-              <div
-                className={`absolute right-0 ${
-                  isLast ? 'bottom-full mb-2' : 'top-full mt-2'
-                } z-30 max-h-72 w-52 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 shadow-panel`}
-              >
-                <MenuItem icon={Pencil}  label="Edit Campaign" onClick={() => { onEdit(); setMenuOpenId(null); }} />
-                <MenuItem icon={Copy}    label="Duplicate"     onClick={() => onDuplicate()} />
-
-                <div className="my-1 h-px bg-brand-lilac/60" />
-
-                <p className="px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-brand-ink/40">
-                  Set Status
-                </p>
-
-                {CAMPAIGN_STATUSES.map((s) => {
-                  const cs = STATUS_STYLES[s];
-                  const SIcon = cs.icon;
-                  return (
-                    <button
-                      key={s}
-                      onClick={() => onStatusChange(c.id, s)}
-                      className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs ${
-                        c.status === s
-                          ? 'bg-brand-magenta/10 font-semibold text-brand-magenta'
-                          : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-                      }`}
-                    >
-                      <SIcon size={12} /> {s}
-                    </button>
-                  );
-                })}
-
-                <div className="my-1 h-px bg-brand-lilac/60" />
-                <MenuItem icon={Trash2}  label="Delete"        danger onClick={() => { onDelete(); setMenuOpenId(null); }} />
-              </div>
-            </>
-          )}
-        </div>
+        <button
+          onClick={onDelete}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-500 transition-all hover:bg-rose-100"
+          title="Delete"
+        >
+          <Trash2 size={12} /> Delete
+        </button>
       </div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MENU ITEM / MINI BOX / PROGRESS BAR
+   MINI BOX / PROGRESS BAR
    ═══════════════════════════════════════════════════════════════ */
-function MenuItem({ icon: Icon, label, onClick, danger }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${
-        danger ? 'text-rose-500 hover:bg-rose-50' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-      }`}
-    >
-      <Icon size={14} /> {label}
-    </button>
-  );
-}
-
 function MiniBox({ label, value, tone = 'purple' }) {
   const tones = {
     purple:  'bg-violet-50 text-brand-purple border-violet-100',
@@ -1265,9 +1160,6 @@ function CampaignModal({ mode = 'create', initial = null, defaultAssignee, onClo
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   SECTION TITLE / MODAL INPUT
-   ═══════════════════════════════════════════════════════════════ */
 function SectionTitle({ icon: Icon, label }) {
   return (
     <div className="flex items-center gap-2 border-b border-brand-lilac/60 pb-1.5">
@@ -1300,9 +1192,9 @@ function ModalInput({ label, type = 'text', value, onChange, placeholder, icon: 
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   CAMPAIGN DETAILS DRAWER
+   CAMPAIGN DETAILS DRAWER — includes Change Status section
    ═══════════════════════════════════════════════════════════════ */
-function CampaignDetailsDrawer({ campaign: c, onClose, onEdit, onMonitoring, onToggle }) {
+function CampaignDetailsDrawer({ campaign: c, onClose, onEdit, onMonitoring, onToggle, onStatusChange }) {
   const st = STATUS_STYLES[c.status] || STATUS_STYLES.Draft;
   const StatusIcon = st.icon;
   const health = campaignHealth(c);
@@ -1387,6 +1279,37 @@ function CampaignDetailsDrawer({ campaign: c, onClose, onEdit, onMonitoring, onT
               <InfoRow icon={User}       label="Assigned To"       value={c.assignedTo || '—'} />
             </div>
           </div>
+
+          {onStatusChange && (
+            <div className="card !p-5 space-y-3">
+              <SectionTitle icon={Activity} label="Change Status" />
+              <div className="flex flex-wrap gap-2">
+                {CAMPAIGN_STATUSES.map((s) => {
+                  const cs = STATUS_STYLES[s];
+                  const SIcon = cs.icon;
+                  const active = c.status === s;
+                  const isCompletedGuard = c.status === 'Completed' && s !== 'Completed';
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => { if (!active && !isCompletedGuard) onStatusChange(s); }}
+                      disabled={active || isCompletedGuard}
+                      title={isCompletedGuard ? 'Completed campaigns cannot be reopened' : ''}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all ${
+                        active
+                          ? `${cs.chip} ring-2 ring-brand-magenta/20 cursor-default`
+                          : isCompletedGuard
+                          ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                          : 'border-brand-lilac bg-white text-brand-ink/60 hover:bg-brand-lilac/30'
+                      }`}
+                    >
+                      <SIcon size={12} /> {s}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="rounded-2xl border border-brand-lilac bg-gradient-to-br from-brand-mist/60 to-white p-4">
             <p className="font-mono text-[10px] uppercase tracking-wider text-brand-ink/50">Summary</p>

@@ -1,7 +1,7 @@
 // src/pages/marketing/LeadGeneration.jsx
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Plus, Search, Filter, ChevronDown, MoreVertical, Eye, Pencil,
+  Plus, Search, Filter, ChevronDown, Eye, Pencil,
   Trash2, Check, AlertCircle, CheckCircle2, XCircle, X,
   Users, Sparkles, Clock, Zap, Target, TrendingUp, TrendingDown,
   Calendar, Globe, MapPin, Mail, Phone, Briefcase, Tag, Hash,
@@ -111,11 +111,9 @@ const todayISO = () => {
 const normalizeDateKey = (val) => {
   if (!val) return '';
   const s = String(val);
-  // Already YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
-  // Convert timestamp → local date string
   const off = d.getTimezoneOffset();
   const local = new Date(d.getTime() - off * 60 * 1000);
   return local.toISOString().slice(0, 10);
@@ -226,7 +224,6 @@ export default function LeadGeneration() {
   const [campaignFilter, setCampaignFilter] = useState('All');
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [viewMode, setViewMode] = useState('list');
-  const [menuOpenId, setMenuOpenId] = useState(null);
   const [toast, setToast] = useState(null);
 
   const [showModal, setShowModal] = useState(false);
@@ -235,8 +232,6 @@ export default function LeadGeneration() {
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => { saveState(leads); }, [leads]);
-
-  /* Keep ID counter ahead of any existing lead (first-run / legacy safety) */
   useEffect(() => { syncCounterWithLeads(leads); }, [leads]);
 
   const showToast = (msg, type = 'success') => {
@@ -272,7 +267,6 @@ export default function LeadGeneration() {
     return ['All', ...Array.from(set)];
   }, [leads]);
 
-  /* Reset campaignFilter if the option disappears */
   useEffect(() => {
     if (campaignFilter !== 'All' && !campaignOptions.includes(campaignFilter)) {
       setCampaignFilter('All');
@@ -335,18 +329,13 @@ export default function LeadGeneration() {
   const handleDelete = (id) => {
     setLeads((prev) => prev.filter((l) => l.id !== id));
     setConfirmDelete(null);
-    setMenuOpenId(null);
     showToast('Lead deleted', 'error');
   };
 
   const handleStatusChange = (id, newStatus) => {
     const target = leads.find((l) => l.id === id);
-    if (target && target.status === newStatus) {
-      setMenuOpenId(null);
-      return;
-    }
+    if (target && target.status === newStatus) return;
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l)));
-    setMenuOpenId(null);
     showToast(`Status → ${newStatus}`);
   };
 
@@ -377,6 +366,10 @@ export default function LeadGeneration() {
     setStatusFilter('All');
     setCampaignFilter('All');
   };
+
+  const openView = (l) => setViewing(l);
+  const openEdit = (l) => { setEditing(l); setShowModal(true); };
+  const openDelete = (l) => setConfirmDelete(l);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#FDF8FE] via-white to-[#FBF3FF]">
@@ -539,12 +532,9 @@ export default function LeadGeneration() {
               <LeadCard
                 key={l.id}
                 lead={l}
-                menuOpenId={menuOpenId}
-                setMenuOpenId={setMenuOpenId}
-                onView={() => setViewing(l)}
-                onEdit={() => { setEditing(l); setShowModal(true); }}
-                onDelete={() => { setConfirmDelete(l); setMenuOpenId(null); }}
-                onStatusChange={handleStatusChange}
+                onView={() => openView(l)}
+                onEdit={() => openEdit(l)}
+                onDelete={() => openDelete(l)}
               />
             ))}
           </div>
@@ -554,12 +544,9 @@ export default function LeadGeneration() {
               <LeadRow
                 key={l.id}
                 lead={l}
-                menuOpenId={menuOpenId}
-                setMenuOpenId={setMenuOpenId}
-                onView={() => setViewing(l)}
-                onEdit={() => { setEditing(l); setShowModal(true); }}
-                onDelete={() => { setConfirmDelete(l); setMenuOpenId(null); }}
-                onStatusChange={handleStatusChange}
+                onView={() => openView(l)}
+                onEdit={() => openEdit(l)}
+                onDelete={() => openDelete(l)}
               />
             ))}
           </div>
@@ -665,10 +652,25 @@ function useAnimatedCount(target, duration = 600) {
    DROPDOWN FILTER
    ═══════════════════════════════════════════════════════════════ */
 function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onChange }) {
+  const triggerRef = useRef(null);
+  const [openUp, setOpenUp] = useState(false);
+
+  const handleToggle = () => {
+    if (!open) {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) {
+        const spaceBelow = window.innerHeight - rect.bottom;
+        setOpenUp(spaceBelow < 320);
+      }
+    }
+    onToggle();
+  };
+
   return (
     <div className="relative">
       <button
-        onClick={onToggle}
+        ref={triggerRef}
+        onClick={handleToggle}
         aria-expanded={open}
         className="inline-flex items-center gap-2 rounded-full border border-brand-lilac bg-white px-4 py-2.5 text-sm font-medium text-brand-ink hover:bg-brand-lilac/40"
       >
@@ -679,7 +681,7 @@ function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onC
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={onToggle} />
-          <div className="absolute right-0 top-full z-30 mt-2 max-h-72 w-56 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 shadow-panel">
+          <div className={`absolute right-0 ${openUp ? 'bottom-full mb-2' : 'top-full mt-2'} z-30 max-h-72 w-56 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 shadow-panel`}>
             {options.map((o) => (
               <button
                 key={o}
@@ -701,27 +703,12 @@ function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onC
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   LEAD CARD (GRID)
-   Uses viewport measurement so menu doesn't clip.
+   LEAD CARD (GRID) — View + Edit + Delete visible
    ═══════════════════════════════════════════════════════════════ */
-function LeadCard({ lead: l, menuOpenId, setMenuOpenId, onView, onEdit, onDelete, onStatusChange }) {
+function LeadCard({ lead: l, onView, onEdit, onDelete }) {
   const st = STATUS_STYLES[l.status] || STATUS_STYLES.New;
   const StatusIcon = st.icon;
   const SourceIcon = SOURCE_ICONS[l.source] || Globe;
-
-  const triggerRef = useRef(null);
-  const [openUp, setOpenUp] = useState(false);
-
-  const handleOpenMenu = () => {
-    const isOpen = menuOpenId === l.id;
-    if (isOpen) { setMenuOpenId(null); return; }
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setOpenUp(spaceBelow < 300);
-    }
-    setMenuOpenId(l.id);
-  };
 
   return (
     <div className="group relative flex flex-col rounded-2xl border-2 border-brand-lilac/80 bg-white shadow-sm transition-all duration-500 hover:-translate-y-1.5 hover:border-brand-magenta/50 hover:shadow-[0_20px_45px_-15px_rgba(227,28,121,0.25)]">
@@ -746,48 +733,6 @@ function LeadCard({ lead: l, menuOpenId, setMenuOpenId, onView, onEdit, onDelete
             <StatusIcon size={10} className="mr-1 inline" />
             {l.status}
           </span>
-
-          <div className="relative">
-            <button
-              ref={triggerRef}
-              onClick={handleOpenMenu}
-              aria-label="Lead actions"
-              aria-expanded={menuOpenId === l.id}
-              className="shrink-0 rounded-lg p-1.5 text-brand-ink/40 transition-colors hover:bg-brand-lilac"
-            >
-              <MoreVertical size={14} />
-            </button>
-            {menuOpenId === l.id && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-                <div className={`absolute right-0 ${openUp ? 'bottom-full mb-2' : 'top-full mt-2'} z-30 max-h-72 w-52 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 shadow-panel`}>
-                  <MenuItem icon={Eye}     label="View Details" onClick={() => { onView(); setMenuOpenId(null); }} />
-                  <MenuItem icon={Pencil}  label="Edit Lead"    onClick={() => { onEdit(); setMenuOpenId(null); }} />
-                  <div className="my-1 h-px bg-brand-lilac/60" />
-                  <p className="px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-brand-ink/40">
-                    Set Status
-                  </p>
-                  {LEAD_STATUSES.map((s) => {
-                    const cs = STATUS_STYLES[s];
-                    const SIcon = cs.icon;
-                    return (
-                      <button
-                        key={s}
-                        onClick={() => onStatusChange(l.id, s)}
-                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs ${
-                          l.status === s ? 'bg-brand-magenta/10 font-semibold text-brand-magenta' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-                        }`}
-                      >
-                        <SIcon size={12} /> {s}
-                      </button>
-                    );
-                  })}
-                  <div className="my-1 h-px bg-brand-lilac/60" />
-                  <MenuItem icon={Trash2} label="Delete" danger onClick={() => { onDelete(); setMenuOpenId(null); }} />
-                </div>
-              </>
-            )}
-          </div>
         </div>
 
         <div className="mt-4 space-y-2 rounded-xl border border-brand-lilac/60 bg-gradient-to-br from-brand-mist/80 to-brand-mist/40 p-3 text-xs">
@@ -825,10 +770,12 @@ function LeadCard({ lead: l, menuOpenId, setMenuOpenId, onView, onEdit, onDelete
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        {/* Actions: View + Edit + Delete */}
+        <div className="mt-4 grid grid-cols-3 gap-2">
           <button
             onClick={onView}
             className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white px-2 py-2 text-xs font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+            title="View details"
           >
             <Eye size={12} className="shrink-0" />
             <span className="truncate">View</span>
@@ -836,9 +783,18 @@ function LeadCard({ lead: l, menuOpenId, setMenuOpenId, onView, onEdit, onDelete
           <button
             onClick={onEdit}
             className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple px-2 py-2 text-xs font-semibold text-white shadow-card transition-all hover:brightness-110"
+            title="Edit lead"
           >
             <Pencil size={12} className="shrink-0" />
             <span className="truncate">Edit</span>
+          </button>
+          <button
+            onClick={onDelete}
+            className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-2 py-2 text-xs font-semibold text-rose-500 transition-all hover:bg-rose-100"
+            title="Delete lead"
+          >
+            <Trash2 size={12} className="shrink-0" />
+            <span className="truncate">Delete</span>
           </button>
         </div>
       </div>
@@ -847,26 +803,12 @@ function LeadCard({ lead: l, menuOpenId, setMenuOpenId, onView, onEdit, onDelete
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   LEAD ROW (LIST)
+   LEAD ROW (LIST) — View + Edit + Delete visible
    ═══════════════════════════════════════════════════════════════ */
-function LeadRow({ lead: l, menuOpenId, setMenuOpenId, onView, onEdit, onDelete, onStatusChange }) {
+function LeadRow({ lead: l, onView, onEdit, onDelete }) {
   const st = STATUS_STYLES[l.status] || STATUS_STYLES.New;
   const StatusIcon = st.icon;
   const SourceIcon = SOURCE_ICONS[l.source] || Globe;
-
-  const triggerRef = useRef(null);
-  const [openUp, setOpenUp] = useState(false);
-
-  const handleOpenMenu = () => {
-    const isOpen = menuOpenId === l.id;
-    if (isOpen) { setMenuOpenId(null); return; }
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setOpenUp(spaceBelow < 300);
-    }
-    setMenuOpenId(l.id);
-  };
 
   return (
     <div className="group flex flex-wrap items-center gap-3 rounded-xl border-2 border-brand-lilac/70 bg-white px-3 py-3 transition-all hover:shadow-md sm:flex-nowrap sm:gap-4 sm:px-4">
@@ -913,73 +855,27 @@ function LeadRow({ lead: l, menuOpenId, setMenuOpenId, onView, onEdit, onDelete,
       <div className="flex shrink-0 items-center gap-1.5">
         <button
           onClick={onView}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-brand-lilac bg-white text-brand-ink/60 transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
-          title="View"
-        ><Eye size={13} /></button>
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+          title="View details"
+        >
+          <Eye size={12} /> View
+        </button>
         <button
           onClick={onEdit}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-magenta to-brand-purple px-2.5 text-[11px] font-semibold text-white shadow-card hover:brightness-110"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-magenta to-brand-purple px-2.5 text-[11px] font-semibold text-white shadow-card transition-all hover:brightness-110"
+          title="Edit lead"
         >
-          <Pencil size={11} /> Edit
+          <Pencil size={12} /> Edit
         </button>
-
-        <div className="relative">
-          <button
-            ref={triggerRef}
-            onClick={handleOpenMenu}
-            aria-label="Lead actions"
-            aria-expanded={menuOpenId === l.id}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-brand-ink/40 transition-colors hover:bg-brand-lilac"
-          ><MoreVertical size={14} /></button>
-          {menuOpenId === l.id && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-              <div className={`absolute right-0 ${openUp ? 'bottom-full mb-2' : 'top-full mt-2'} z-30 max-h-72 w-52 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 shadow-panel`}>
-                <MenuItem icon={Eye}    label="View Details" onClick={() => { onView(); setMenuOpenId(null); }} />
-                <MenuItem icon={Pencil} label="Edit Lead"    onClick={() => { onEdit(); setMenuOpenId(null); }} />
-                <div className="my-1 h-px bg-brand-lilac/60" />
-                <p className="px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-brand-ink/40">
-                  Set Status
-                </p>
-                {LEAD_STATUSES.map((s) => {
-                  const cs = STATUS_STYLES[s];
-                  const SIcon = cs.icon;
-                  return (
-                    <button
-                      key={s}
-                      onClick={() => onStatusChange(l.id, s)}
-                      className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs ${
-                        l.status === s ? 'bg-brand-magenta/10 font-semibold text-brand-magenta' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-                      }`}
-                    >
-                      <SIcon size={12} /> {s}
-                    </button>
-                  );
-                })}
-                <div className="my-1 h-px bg-brand-lilac/60" />
-                <MenuItem icon={Trash2} label="Delete" danger onClick={() => { onDelete(); setMenuOpenId(null); }} />
-              </div>
-            </>
-          )}
-        </div>
+        <button
+          onClick={onDelete}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-500 transition-all hover:bg-rose-100"
+          title="Delete lead"
+        >
+          <Trash2 size={12} /> Delete
+        </button>
       </div>
     </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   MENU ITEM
-   ═══════════════════════════════════════════════════════════════ */
-function MenuItem({ icon: Icon, label, onClick, danger }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${
-        danger ? 'text-rose-500 hover:bg-rose-50' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-      }`}
-    >
-      <Icon size={14} /> {label}
-    </button>
   );
 }
 

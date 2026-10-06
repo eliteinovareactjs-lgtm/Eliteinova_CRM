@@ -1,7 +1,7 @@
 // src/pages/marketing/LeadSources.jsx
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Plus, Search, Filter, ChevronDown, MoreVertical, Eye, Pencil,
+  Plus, Search, Filter, ChevronDown, Eye, Pencil,
   Trash2, Copy, AlertCircle, CheckCircle2, XCircle, X, Users,
   Sparkles, Clock, Zap, Target, TrendingUp, TrendingDown, Calendar,
   Globe, MapPin, Briefcase, Tag, Hash, UserPlus, Layers, Flame,
@@ -144,7 +144,7 @@ function useEscape(enabled, handler) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SEED DATA (stable IDs, stable lastSync)
+   SEED DATA
    ═══════════════════════════════════════════════════════════════ */
 const SEED_SOURCES = [
   { id: 'src-google-ads',  source: 'Google Ads',  category: 'Google Ads',    campaign: 'Search - CRM',    landingPage: '/landing/crm-trial',  leads: 450, qualified: 120, converted: 35, cpl: 15.50, budget: 6975, status: 'Active',    sourceType: 'Google Ads',       createdAt: new Date('2024-05-01').toISOString(), lastSync: new Date('2024-06-20T10:00:00Z').toISOString() },
@@ -172,7 +172,6 @@ export default function LeadSources() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [statusOpen, setStatusOpen] = useState(false);
   const [viewMode, setViewMode] = useState('list');
-  const [menuOpenId, setMenuOpenId] = useState(null);
   const [toast, setToast] = useState(null);
 
   const [showModal, setShowModal] = useState(false);
@@ -232,27 +231,25 @@ export default function LeadSources() {
     return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }, [sources, activeTab, categoryFilter, statusFilter, searchQuery]);
 
-  /* ── SUMMARY (from filtered so KPIs match what's shown) ── */
+  /* ── SUMMARY (always from ALL sources — KPIs stay stable) ── */
   const summary = useMemo(() => {
-    const totalLeads     = filtered.reduce((sum, s) => sum + (s.leads || 0), 0);
-    const totalQualified = filtered.reduce((sum, s) => sum + (s.qualified || 0), 0);
-    const totalConverted = filtered.reduce((sum, s) => sum + (s.converted || 0), 0);
-    const totalBudget    = filtered.reduce((sum, s) => sum + (s.budget || 0), 0);
-    // Blended CPL: weighted by leads using per-source CPL
+    const totalLeads     = sources.reduce((sum, s) => sum + (s.leads || 0), 0);
+    const totalQualified = sources.reduce((sum, s) => sum + (s.qualified || 0), 0);
+    const totalConverted = sources.reduce((sum, s) => sum + (s.converted || 0), 0);
+    const totalBudget    = sources.reduce((sum, s) => sum + (s.budget || 0), 0);
     const avgCPL = totalLeads > 0
-      ? filtered.reduce((sum, s) => sum + (s.cpl || 0) * (s.leads || 0), 0) / totalLeads
+      ? sources.reduce((sum, s) => sum + (s.cpl || 0) * (s.leads || 0), 0) / totalLeads
       : 0;
     return {
-      total: filtered.length,
+      total: sources.length,
       totalLeads, totalQualified, totalConverted, totalBudget, avgCPL,
     };
-  }, [filtered]);
+  }, [sources]);
 
   /* ── HANDLERS ── */
   const handleCreate = (data) => {
     const newSource = normalizeSource({
       id: uid('src'),
-      // defaults first, then user-provided values win
       leads: 0,
       qualified: 0,
       converted: 0,
@@ -277,7 +274,6 @@ export default function LeadSources() {
   const handleDelete = (id) => {
     setSources((prev) => prev.filter((s) => s.id !== id));
     setConfirmDelete(null);
-    setMenuOpenId(null);
     showToast('Source deleted', 'error');
   };
 
@@ -292,18 +288,13 @@ export default function LeadSources() {
       createdAt: new Date().toISOString(),
     });
     setSources((prev) => [copy, ...prev]);
-    setMenuOpenId(null);
     showToast('Source duplicated');
   };
 
   const handleStatusChange = (id, newStatus) => {
     const target = sources.find((s) => s.id === id);
-    if (target && target.status === newStatus) {
-      setMenuOpenId(null);
-      return;
-    }
+    if (target && target.status === newStatus) return;
     setSources((prev) => prev.map((s) => (s.id === id ? { ...s, status: newStatus } : s)));
-    setMenuOpenId(null);
     showToast(`Status → ${newStatus}`);
   };
 
@@ -334,6 +325,10 @@ export default function LeadSources() {
     setStatusFilter('All');
     setActiveTab('all');
   };
+
+  const openView = (s) => setViewing(s);
+  const openEdit = (s) => { setEditing(s); setShowModal(true); };
+  const openDelete = (s) => setConfirmDelete(s);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#FDF8FE] via-white to-[#FBF3FF]">
@@ -486,18 +481,14 @@ export default function LeadSources() {
               <SourceCard
                 key={s.id}
                 source={s}
-                menuOpenId={menuOpenId}
-                setMenuOpenId={setMenuOpenId}
-                onView={() => setViewing(s)}
-                onEdit={() => { setEditing(s); setShowModal(true); }}
-                onDelete={() => { setConfirmDelete(s); setMenuOpenId(null); }}
-                onDuplicate={() => handleDuplicate(s)}
-                onStatusChange={handleStatusChange}
+                onView={() => openView(s)}
+                onEdit={() => openEdit(s)}
+                onDelete={() => openDelete(s)}
               />
             ))}
           </div>
         ) : (
-          <div className="card !p-0 overflow-hidden">
+          <div className="card !p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-brand-lilac/60 bg-brand-mist/40 text-[11px] font-bold uppercase tracking-wider text-brand-ink/60">
@@ -510,7 +501,7 @@ export default function LeadSources() {
                     <th className="px-5 py-3">Converted</th>
                     <th className="px-5 py-3">CPL</th>
                     <th className="px-5 py-3">Status</th>
-                    <th className="px-5 py-3 text-right" aria-label="Actions"></th>
+                    <th className="px-5 py-3 text-right" aria-label="Actions">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-brand-lilac/40">
@@ -526,7 +517,7 @@ export default function LeadSources() {
                               <SourceIcon size={14} />
                             </span>
                             <div className="min-w-0">
-                              <button onClick={() => setViewing(s)} className="block truncate text-left font-semibold text-brand-ink hover:text-brand-magenta">
+                              <button onClick={() => openView(s)} className="block truncate text-left font-semibold text-brand-ink hover:text-brand-magenta">
                                 {s.source}
                               </button>
                               <p className="truncate font-mono text-[10px] text-brand-ink/50">{s.category}</p>
@@ -545,16 +536,12 @@ export default function LeadSources() {
                             {s.status}
                           </span>
                         </td>
-                        <td className="px-5 py-3 text-right">
-                          <RowMenu
+                        <td className="px-5 py-3">
+                          <RowActions
                             source={s}
-                            menuOpenId={menuOpenId}
-                            setMenuOpenId={setMenuOpenId}
-                            onView={() => { setViewing(s); setMenuOpenId(null); }}
-                            onEdit={() => { setEditing(s); setShowModal(true); setMenuOpenId(null); }}
-                            onDuplicate={() => handleDuplicate(s)}
-                            onDelete={() => { setConfirmDelete(s); setMenuOpenId(null); }}
-                            onStatusChange={handleStatusChange}
+                            onView={() => openView(s)}
+                            onEdit={() => openEdit(s)}
+                            onDelete={() => openDelete(s)}
                           />
                         </td>
                       </tr>
@@ -717,28 +704,14 @@ function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onC
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SOURCE CARD (GRID)
+   SOURCE CARD (GRID) — View + Edit + Delete visible
    ═══════════════════════════════════════════════════════════════ */
-function SourceCard({ source: s, menuOpenId, setMenuOpenId, onView, onEdit, onDelete, onDuplicate, onStatusChange }) {
+function SourceCard({ source: s, onView, onEdit, onDelete }) {
   const st = STATUS_STYLES[s.status] || STATUS_STYLES.Draft;
   const StatusIcon = st.icon;
   const SourceIcon = CATEGORY_ICONS[s.category] || Share2;
   const conversionRate = s.leads ? Math.round((s.converted / s.leads) * 100) : 0;
   const qualifiedRate  = s.leads ? Math.round((s.qualified / s.leads) * 100) : 0;
-
-  const triggerRef = useRef(null);
-  const [openUp, setOpenUp] = useState(false);
-
-  const handleOpenMenu = () => {
-    const isOpen = menuOpenId === s.id;
-    if (isOpen) { setMenuOpenId(null); return; }
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setOpenUp(spaceBelow < 300);
-    }
-    setMenuOpenId(s.id);
-  };
 
   return (
     <div className="group relative flex flex-col rounded-2xl border-2 border-brand-lilac/80 bg-white shadow-sm transition-all duration-500 hover:-translate-y-1.5 hover:border-brand-magenta/50 hover:shadow-[0_20px_45px_-15px_rgba(227,28,121,0.25)]">
@@ -765,47 +738,6 @@ function SourceCard({ source: s, menuOpenId, setMenuOpenId, onView, onEdit, onDe
             <StatusIcon size={10} className="mr-1 inline" />
             {s.status}
           </span>
-
-          <div className="relative">
-            <button
-              ref={triggerRef}
-              aria-label="Source actions"
-              aria-expanded={menuOpenId === s.id}
-              onClick={handleOpenMenu}
-              className="shrink-0 rounded-lg p-1.5 text-brand-ink/40 transition-colors hover:bg-brand-lilac"
-            >
-              <MoreVertical size={14} />
-            </button>
-            {menuOpenId === s.id && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-                <div className={`absolute right-0 ${openUp ? 'bottom-full mb-2' : 'top-full mt-2'} z-30 max-h-72 w-52 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 shadow-panel`}>
-                  <MenuItem icon={Eye}     label="View Details" onClick={() => { onView(); setMenuOpenId(null); }} />
-                  <MenuItem icon={Pencil}  label="Edit Source"  onClick={() => { onEdit(); setMenuOpenId(null); }} />
-                  <MenuItem icon={Copy}    label="Duplicate"    onClick={() => onDuplicate()} />
-                  <div className="my-1 h-px bg-brand-lilac/60" />
-                  <p className="px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-brand-ink/40">Set Status</p>
-                  {SOURCE_STATUSES.map((stt) => {
-                    const cs = STATUS_STYLES[stt];
-                    const SIcon = cs.icon;
-                    return (
-                      <button
-                        key={stt}
-                        onClick={() => onStatusChange(s.id, stt)}
-                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs ${
-                          s.status === stt ? 'bg-brand-magenta/10 font-semibold text-brand-magenta' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-                        }`}
-                      >
-                        <SIcon size={12} /> {stt}
-                      </button>
-                    );
-                  })}
-                  <div className="my-1 h-px bg-brand-lilac/60" />
-                  <MenuItem icon={Trash2}  label="Delete"    danger onClick={() => { onDelete(); setMenuOpenId(null); }} />
-                </div>
-              </>
-            )}
-          </div>
         </div>
 
         <div className="mt-4 space-y-2 rounded-xl border border-brand-lilac/60 bg-gradient-to-br from-brand-mist/80 to-brand-mist/40 p-3 text-xs">
@@ -841,10 +773,12 @@ function SourceCard({ source: s, menuOpenId, setMenuOpenId, onView, onEdit, onDe
           <ProgressBar label="Conversion Rate" value={conversionRate} tone="emerald" />
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        {/* Actions: View + Edit + Delete */}
+        <div className="mt-4 grid grid-cols-3 gap-2">
           <button
             onClick={onView}
             className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white px-2 py-2 text-xs font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+            title="View details"
           >
             <Eye size={12} className="shrink-0" />
             <span className="truncate">View</span>
@@ -852,9 +786,18 @@ function SourceCard({ source: s, menuOpenId, setMenuOpenId, onView, onEdit, onDe
           <button
             onClick={onEdit}
             className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple px-2 py-2 text-xs font-semibold text-white shadow-card transition-all hover:brightness-110"
+            title="Edit source"
           >
             <Pencil size={12} className="shrink-0" />
             <span className="truncate">Edit</span>
+          </button>
+          <button
+            onClick={onDelete}
+            className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-2 py-2 text-xs font-semibold text-rose-500 transition-all hover:bg-rose-100"
+            title="Delete source"
+          >
+            <Trash2 size={12} className="shrink-0" />
+            <span className="truncate">Delete</span>
           </button>
         </div>
       </div>
@@ -863,63 +806,32 @@ function SourceCard({ source: s, menuOpenId, setMenuOpenId, onView, onEdit, onDe
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ROW MENU (for table)
+   ROW ACTIONS (for table) — View + Edit + Delete visible
    ═══════════════════════════════════════════════════════════════ */
-function RowMenu({ source: s, menuOpenId, setMenuOpenId, onView, onEdit, onDuplicate, onDelete, onStatusChange }) {
-  const triggerRef = useRef(null);
-  const [openUp, setOpenUp] = useState(false);
-
-  const handleOpen = () => {
-    const isOpen = menuOpenId === s.id;
-    if (isOpen) { setMenuOpenId(null); return; }
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setOpenUp(spaceBelow < 300);
-    }
-    setMenuOpenId(s.id);
-  };
-
+function RowActions({ onView, onEdit, onDelete }) {
   return (
-    <div className="relative inline-block">
+    <div className="flex items-center justify-end gap-1.5">
       <button
-        ref={triggerRef}
-        aria-label="Source actions"
-        aria-expanded={menuOpenId === s.id}
-        onClick={handleOpen}
-        className="rounded-lg p-1.5 text-brand-ink/50 hover:bg-brand-lilac"
+        onClick={onView}
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+        title="View details"
       >
-        <MoreVertical size={14} />
+        <Eye size={12} /> View
       </button>
-      {menuOpenId === s.id && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-          <div className={`absolute right-0 ${openUp ? 'bottom-full mb-2' : 'top-full mt-2'} z-30 max-h-72 w-52 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 text-left shadow-panel`}>
-            <MenuItem icon={Eye}     label="View Details" onClick={onView} />
-            <MenuItem icon={Pencil}  label="Edit Source"  onClick={onEdit} />
-            <MenuItem icon={Copy}    label="Duplicate"    onClick={onDuplicate} />
-            <div className="my-1 h-px bg-brand-lilac/60" />
-            <p className="px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-brand-ink/40">Set Status</p>
-            {SOURCE_STATUSES.map((stt) => {
-              const cs = STATUS_STYLES[stt];
-              const SIcon = cs.icon;
-              return (
-                <button
-                  key={stt}
-                  onClick={() => onStatusChange(s.id, stt)}
-                  className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs ${
-                    s.status === stt ? 'bg-brand-magenta/10 font-semibold text-brand-magenta' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-                  }`}
-                >
-                  <SIcon size={12} /> {stt}
-                </button>
-              );
-            })}
-            <div className="my-1 h-px bg-brand-lilac/60" />
-            <MenuItem icon={Trash2}  label="Delete"    danger onClick={onDelete} />
-          </div>
-        </>
-      )}
+      <button
+        onClick={onEdit}
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-magenta to-brand-purple px-2.5 text-[11px] font-semibold text-white shadow-card transition-all hover:brightness-110"
+        title="Edit source"
+      >
+        <Pencil size={12} /> Edit
+      </button>
+      <button
+        onClick={onDelete}
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-500 transition-all hover:bg-rose-100"
+        title="Delete source"
+      >
+        <Trash2 size={12} /> Delete
+      </button>
     </div>
   );
 }
@@ -963,22 +875,6 @@ function ProgressBar({ label, value, tone = 'purple' }) {
         />
       </div>
     </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   MENU ITEM
-   ═══════════════════════════════════════════════════════════════ */
-function MenuItem({ icon: Icon, label, onClick, danger }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${
-        danger ? 'text-rose-500 hover:bg-rose-50' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-      }`}
-    >
-      <Icon size={14} /> {label}
-    </button>
   );
 }
 
