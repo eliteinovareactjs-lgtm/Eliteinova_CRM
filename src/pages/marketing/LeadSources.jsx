@@ -488,68 +488,101 @@ export default function LeadSources() {
             ))}
           </div>
         ) : (
-          <div className="card !p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-brand-lilac/60 bg-brand-mist/40 text-[11px] font-bold uppercase tracking-wider text-brand-ink/60">
-                  <tr>
-                    <th className="px-5 py-3">Source</th>
-                    <th className="px-5 py-3">Campaign</th>
-                    <th className="px-5 py-3">Landing Page</th>
-                    <th className="px-5 py-3">Leads</th>
-                    <th className="px-5 py-3">Qualified</th>
-                    <th className="px-5 py-3">Converted</th>
-                    <th className="px-5 py-3">CPL</th>
-                    <th className="px-5 py-3">Status</th>
-                    <th className="px-5 py-3 text-right" aria-label="Actions">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand-lilac/40">
-                  {filtered.map((s) => {
-                    const st = STATUS_STYLES[s.status] || STATUS_STYLES.Draft;
-                    const StatusIcon = st.icon;
-                    const SourceIcon = CATEGORY_ICONS[s.category] || Share2;
-                    return (
-                      <tr key={s.id} className="transition-colors hover:bg-brand-mist/30">
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-sm">
-                              <SourceIcon size={14} />
-                            </span>
-                            <div className="min-w-0">
-                              <button onClick={() => openView(s)} className="block truncate text-left font-semibold text-brand-ink hover:text-brand-magenta">
-                                {s.source}
-                              </button>
-                              <p className="truncate font-mono text-[10px] text-brand-ink/50">{s.category}</p>
-                            </div>
+          <div className="card !p-0 overflow-hidden">
+            <table className="w-full table-fixed text-left text-sm">
+              <thead className="border-b border-brand-lilac/60 bg-brand-mist/40 text-[10px] font-bold uppercase tracking-wider text-brand-ink/60">
+                <tr>
+                  <th className="w-[16%] px-3 py-3">Source</th>
+                  <th className="w-[16%] px-3 py-3">Campaign</th>
+                  <th className="w-[14%] px-3 py-3">Landing Page</th>
+                  <th className="w-[9%] px-3 py-3 text-right">Leads</th>
+                  <th className="w-[9%] px-3 py-3 text-right">Qualified</th>
+                  <th className="w-[9%] px-3 py-3 text-right">Converted</th>
+                  <th className="w-[9%] px-3 py-3 text-right">CPL</th>
+                  <th className="w-[13%] px-3 py-3 text-center">Status</th>
+                  <th className="w-[14%] px-3 py-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-brand-lilac/40">
+                {filtered.map((s) => {
+                  const st = STATUS_STYLES[s.status] || STATUS_STYLES.Draft;
+                  const StatusIcon = st.icon;
+                  const SourceIcon = CATEGORY_ICONS[s.category] || Share2;
+                  return (
+                    <tr key={s.id} className="transition-colors hover:bg-brand-mist/30">
+                      {/* Source */}
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-magenta to-brand-purple text-white shadow-sm">
+                            <SourceIcon size={12} />
+                          </span>
+                          <div className="min-w-0">
+                            <button onClick={() => openView(s)} className="block truncate text-left text-xs font-semibold text-brand-ink hover:text-brand-magenta" title={s.source}>
+                              {s.source}
+                            </button>
+                            <p className="truncate font-mono text-[9px] text-brand-ink/50">{s.category}</p>
                           </div>
-                        </td>
-                        <td className="px-5 py-3 text-brand-ink/70">{s.campaign}</td>
-                        <td className="px-5 py-3 font-mono text-[11px] text-brand-ink/50">{s.landingPage}</td>
-                        <td className="px-5 py-3 font-semibold tabular-nums">{s.leads}</td>
-                        <td className="px-5 py-3 tabular-nums text-brand-purple">{s.qualified}</td>
-                        <td className="px-5 py-3 tabular-nums text-emerald-600">{s.converted}</td>
-                        <td className="px-5 py-3 tabular-nums text-brand-magenta">{s.cpl ? `$${s.cpl.toFixed(2)}` : '—'}</td>
-                        <td className="px-5 py-3">
-                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${st.chip}`}>
+                        </div>
+                      </td>
+
+                      {/* Campaign */}
+                      <td className="px-3 py-3">
+                        <p className="truncate text-xs text-brand-ink/70" title={s.campaign}>{s.campaign}</p>
+                      </td>
+
+                      {/* Landing Page */}
+                      <td className="px-3 py-3">
+                        <p className="truncate font-mono text-[11px] text-brand-ink/50" title={s.landingPage}>{s.landingPage}</p>
+                      </td>
+
+                      {/* Leads */}
+                      <td className="px-3 py-3 text-right text-xs font-semibold tabular-nums">{s.leads}</td>
+
+                      {/* Qualified */}
+                      <td className="px-3 py-3 text-right text-xs tabular-nums text-brand-purple font-medium">{s.qualified}</td>
+
+                      {/* Converted */}
+                      <td className="px-3 py-3 text-right text-xs tabular-nums text-emerald-600 font-medium">{s.converted}</td>
+
+                      {/* CPL */}
+                      <td className="px-3 py-3 text-right text-xs tabular-nums text-brand-magenta font-medium">
+                        {s.cpl ? `$${s.cpl.toFixed(2)}` : '—'}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-3 py-3">
+                        <div className="flex justify-center">
+                          <span className={`inline-flex items-center justify-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${st.chip}`}>
                             <StatusIcon size={10} />
                             {s.status}
                           </span>
-                        </td>
-                        <td className="px-5 py-3">
-                          <RowActions
-                            source={s}
-                            onView={() => openView(s)}
-                            onEdit={() => openEdit(s)}
-                            onDelete={() => openDelete(s)}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => openView(s)}
+                            className="flex h-7 items-center gap-1 rounded-lg border border-brand-lilac bg-white px-2 text-[10px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+                            title="View details"
+                          >
+                            <Eye size={11} /> View
+                          </button>
+                          <button
+                            onClick={() => openEdit(s)}
+                            className="flex h-7 items-center gap-1 rounded-lg bg-gradient-to-r from-brand-magenta to-brand-purple px-2 text-[10px] font-semibold text-white shadow-card transition-all hover:brightness-110"
+                            title="Edit source"
+                          >
+                            <Pencil size={10} /> Edit
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -810,7 +843,7 @@ function SourceCard({ source: s, onView, onEdit, onDelete }) {
    ═══════════════════════════════════════════════════════════════ */
 function RowActions({ onView, onEdit, onDelete }) {
   return (
-    <div className="flex items-center justify-end gap-1.5">
+    <div className="flex items-center justify-center gap-1.5">
       <button
         onClick={onView}
         className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-brand-lilac bg-white px-2.5 text-[11px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"

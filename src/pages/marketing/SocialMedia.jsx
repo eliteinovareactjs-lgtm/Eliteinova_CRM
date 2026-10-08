@@ -1,12 +1,12 @@
 // src/pages/marketing/SocialMedia.jsx
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Plus, Search, Filter, ChevronDown, MoreVertical, Eye, Pencil,
-  Trash2, Copy, AlertCircle, CheckCircle2, XCircle, X, Users,
-  Sparkles, Clock, Zap, Target, TrendingUp, Calendar, Globe,
-  MapPin, Briefcase, UserPlus, Layers, Flame, Inbox, Download,
-  Grid3x3, List, ArrowRight, Activity, DollarSign, Star, Megaphone,
-  Share2, CircleDot, BarChart3, Heart, MessageSquare, Radio,
+  Plus, Search, Filter, ChevronDown, Eye, Pencil,
+  Trash2, Copy, AlertCircle, CheckCircle2, X, Users,
+  Clock, Zap, Target, TrendingUp, Calendar, Globe,
+  Inbox, Download, Grid3x3, List,
+  Activity, Megaphone, Share2, BarChart3, Heart,
+  MessageSquare, Radio,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -46,7 +46,7 @@ const WhatsappIcon = ({ size = 16, className = '' }) => (
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   CONSTANTS — platforms from spec
+   CONSTANTS
    ═══════════════════════════════════════════════════════════════ */
 const PLATFORMS = ['Facebook', 'Instagram', 'YouTube', 'LinkedIn', 'WhatsApp'];
 
@@ -108,7 +108,7 @@ const formatShortDate = (val) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════
-   SEED DATA — social leads/posts
+   SEED DATA
    ═══════════════════════════════════════════════════════════════ */
 const SEED_POSTS = [
   { id: uid('post'), platform: 'Facebook',  campaign: 'Summer Sale 2024',    post: 'Summer Sale Carousel',       leads: 45, qualified: 12, converted: 4, engagement: 4.5,  enquiries: 18, status: 'Boosted',  createdAt: new Date('2024-06-01').toISOString() },
@@ -124,7 +124,7 @@ const SEED_POSTS = [
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════ */
 export default function SocialMedia() {
-  const { user } = useAuth();
+  const { user: _user } = useAuth();
 
   const [posts, setPosts] = useState(() => loadState(SEED_POSTS));
   const [activeTab, setActiveTab] = useState('all');
@@ -134,7 +134,6 @@ export default function SocialMedia() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [statusOpen, setStatusOpen] = useState(false);
   const [viewMode, setViewMode] = useState('list');
-  const [menuOpenId, setMenuOpenId] = useState(null);
   const [toast, setToast] = useState(null);
 
   const [showModal, setShowModal] = useState(false);
@@ -142,11 +141,18 @@ export default function SocialMedia() {
   const [viewing, setViewing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  const toastTimerRef = useRef(null);
+
   useEffect(() => { saveState(posts); }, [posts]);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 2400);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2400);
   };
 
   /* ── TABS ── */
@@ -233,13 +239,14 @@ export default function SocialMedia() {
   const handleEdit = (id, updates) => {
     setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
     setEditing(null);
+    setShowModal(false);
     showToast('Post updated');
   };
 
   const handleDelete = (id) => {
     setPosts((prev) => prev.filter((p) => p.id !== id));
     setConfirmDelete(null);
-    setMenuOpenId(null);
+    if (viewing?.id === id) setViewing(null);
     showToast('Post deleted', 'error');
   };
 
@@ -253,13 +260,12 @@ export default function SocialMedia() {
       createdAt: new Date().toISOString(),
     };
     setPosts((prev) => [copy, ...prev]);
-    setMenuOpenId(null);
     showToast('Post duplicated');
   };
 
   const handleStatusChange = (id, newStatus) => {
     setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p)));
-    setMenuOpenId(null);
+    setViewing((v) => (v && v.id === id ? { ...v, status: newStatus } : v));
     showToast(`Status → ${newStatus}`);
   };
 
@@ -286,13 +292,17 @@ export default function SocialMedia() {
     showToast(`Exported ${filtered.length} posts`);
   };
 
-  const hasFilters = searchQuery || platformFilter !== 'All' || statusFilter !== 'All' || (activeTab !== 'all' && activeTab !== 'social-leads');
+  const hasFilters = Boolean(searchQuery) || platformFilter !== 'All' || statusFilter !== 'All' || (activeTab !== 'all' && activeTab !== 'social-leads');
   const clearFilters = () => {
     setSearchQuery('');
     setPlatformFilter('All');
     setStatusFilter('All');
     setActiveTab('all');
   };
+
+  const openCreate = () => { setEditing(null); setShowModal(true); };
+  const openEdit = (post) => { setEditing(post); setShowModal(true); };
+  const openView = (post) => setViewing(post);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#FDF8FE] via-white to-[#FBF3FF]">
@@ -318,7 +328,7 @@ export default function SocialMedia() {
               <Download size={14} className="transition-transform group-hover:translate-y-0.5" /> Export
             </button>
             <button
-              onClick={() => { setEditing(null); setShowModal(true); }}
+              onClick={openCreate}
               className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-magenta to-brand-purple px-4 py-2 text-xs font-semibold text-white shadow-[0_6px_18px_-6px_rgba(227,28,121,0.6)] transition-all hover:-translate-y-0.5 hover:brightness-110"
             >
               <Plus size={14} className="transition-transform group-hover:rotate-90" /> Add Post
@@ -496,128 +506,109 @@ export default function SocialMedia() {
 
         {/* CONTENT */}
         {filtered.length === 0 ? (
-          <EmptyState hasFilters={hasFilters} onClear={clearFilters} onCreate={() => { setEditing(null); setShowModal(true); }} />
+          <EmptyState hasFilters={hasFilters} onClear={clearFilters} onCreate={openCreate} />
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 gap-4 pb-40 md:grid-cols-2 xl:grid-cols-3">
-            {filtered.map((p, index) => (
+            {filtered.map((p) => (
               <PostCard
                 key={p.id}
                 post={p}
-                isLast={index >= filtered.length - 2}
-                menuOpenId={menuOpenId}
-                setMenuOpenId={setMenuOpenId}
-                onView={() => setViewing(p)}
-                onEdit={() => { setEditing(p); setShowModal(true); }}
-                onDelete={() => { setConfirmDelete(p); setMenuOpenId(null); }}
-                onDuplicate={() => handleDuplicate(p)}
-                onStatusChange={handleStatusChange}
-                onConnect={handleConnect}
+                onView={() => openView(p)}
+                onEdit={() => openEdit(p)}
               />
             ))}
           </div>
         ) : (
+          /* ── PERFECT LIST VIEW ── */
           <div className="card !p-0 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-brand-lilac/60 bg-brand-mist/40 text-[11px] font-bold uppercase tracking-wider text-brand-ink/60">
-                  <tr>
-                    <th className="px-5 py-3">Platform</th>
-                    <th className="px-5 py-3">Campaign</th>
-                    <th className="px-5 py-3">Post / Content</th>
-                    <th className="px-5 py-3">Leads</th>
-                    <th className="px-5 py-3">Engagement</th>
-                    <th className="px-5 py-3">Enquiries</th>
-                    <th className="px-5 py-3">Qualified</th>
-                    <th className="px-5 py-3">Conversions</th>
-                    <th className="px-5 py-3">Status</th>
-                    <th className="px-5 py-3 text-right"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand-lilac/40">
-                  {filtered.map((p, index) => {
-                    const st = STATUS_STYLES[p.status] || STATUS_STYLES.Active;
-                    const StatusIcon = st.icon;
-                    const PlatformIcon = PLATFORM_ICONS[p.platform] || Globe;
-                    const theme = PLATFORM_THEMES[p.platform] || {};
-                    const isLast = index === filtered.length - 1;
-                    return (
-                      <tr key={p.id} className="transition-colors hover:bg-brand-mist/30">
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${theme.bg} ${theme.fg} ${theme.border} shadow-sm`}>
-                              <PlatformIcon size={14} />
-                            </span>
-                            <div className="min-w-0">
-                              <button onClick={() => setViewing(p)} className="block truncate text-left font-semibold text-brand-ink hover:text-brand-magenta">
-                                {p.platform}
-                              </button>
-                              <p className="truncate font-mono text-[10px] text-brand-ink/50">{formatShortDate(p.createdAt)}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-brand-ink/70">{p.campaign}</td>
-                        <td className="px-5 py-3 text-brand-ink/70">{p.post}</td>
-                        <td className="px-5 py-3 font-semibold tabular-nums">{p.leads}</td>
-                        <td className="px-5 py-3">
-                          <span className="inline-flex items-center gap-1 text-emerald-600">
-                            <Heart size={11} /> {p.engagement}%
+            <table className="w-full table-fixed text-left text-sm">
+              <thead className="border-b border-brand-lilac/60 bg-brand-mist/40 text-[10px] font-bold uppercase tracking-wider text-brand-ink/60">
+                <tr>
+                  <th className="w-[16%] px-3 py-3">Platform</th>
+                  <th className="w-[18%] px-3 py-3">Campaign</th>
+                  <th className="w-[9%] px-3 py-3 text-right">Leads</th>
+                  <th className="w-[11%] px-3 py-3">Engagement</th>
+                  <th className="w-[10%] px-3 py-3 text-right">Enquiries</th>
+                  <th className="w-[10%] px-3 py-3 text-right">Qualified</th>
+                  <th className="w-[10%] px-3 py-3 text-right">Conversions</th>
+                  <th className="w-[16%] px-3 py-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-brand-lilac/40">
+                {filtered.map((p) => {
+                  const PlatformIcon = PLATFORM_ICONS[p.platform] || Globe;
+                  const theme = PLATFORM_THEMES[p.platform] || {};
+                  return (
+                    <tr key={p.id} className="transition-colors hover:bg-brand-mist/30">
+                      {/* Platform */}
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${theme.bg} ${theme.fg} ${theme.border}`}>
+                            <PlatformIcon size={12} />
                           </span>
-                        </td>
-                        <td className="px-5 py-3 tabular-nums">{p.enquiries}</td>
-                        <td className="px-5 py-3 tabular-nums text-brand-purple">{p.qualified}</td>
-                        <td className="px-5 py-3 tabular-nums text-emerald-600">{p.converted}</td>
-                        <td className="px-5 py-3">
-                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${st.chip}`}>
-                            <StatusIcon size={10} />
-                            {p.status}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <div className="relative inline-block">
+                          <div className="min-w-0">
                             <button
-                              onClick={() => setMenuOpenId(menuOpenId === p.id ? null : p.id)}
-                              className="rounded-lg p-1.5 text-brand-ink/50 hover:bg-brand-lilac"
+                              onClick={() => openView(p)}
+                              className="block truncate text-left text-xs font-semibold text-brand-ink hover:text-brand-magenta"
+                              title={p.platform}
                             >
-                              <MoreVertical size={14} />
+                              {p.platform}
                             </button>
-                            {menuOpenId === p.id && (
-                              <>
-                                <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-                                <div className={`absolute right-0 ${isLast ? 'bottom-full mb-2' : 'top-full mt-2'} z-30 max-h-72 w-52 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 text-left shadow-panel`}>
-                                  <MenuItem icon={Eye}     label="View Details" onClick={() => { setViewing(p); setMenuOpenId(null); }} />
-                                  <MenuItem icon={Pencil}  label="Edit Post"    onClick={() => { setEditing(p); setShowModal(true); setMenuOpenId(null); }} />
-                                  <MenuItem icon={Copy}    label="Duplicate"    onClick={() => handleDuplicate(p)} />
-                                  <MenuItem icon={Radio}   label="Connect Platform" onClick={() => { handleConnect(p.platform); setMenuOpenId(null); }} />
-                                  <div className="my-1 h-px bg-brand-lilac/60" />
-                                  <p className="px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-brand-ink/40">Set Status</p>
-                                  {POST_STATUSES.map((stt) => {
-                                    const cs = STATUS_STYLES[stt];
-                                    const SIcon = cs.icon;
-                                    return (
-                                      <button
-                                        key={stt}
-                                        onClick={() => handleStatusChange(p.id, stt)}
-                                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs ${
-                                          p.status === stt ? 'bg-brand-magenta/10 font-semibold text-brand-magenta' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-                                        }`}
-                                      >
-                                        <SIcon size={12} /> {stt}
-                                      </button>
-                                    );
-                                  })}
-                                  <div className="my-1 h-px bg-brand-lilac/60" />
-                                  <MenuItem icon={Trash2}  label="Delete"    danger onClick={() => { setConfirmDelete(p); setMenuOpenId(null); }} />
-                                </div>
-                              </>
-                            )}
+                            <p className="truncate font-mono text-[9px] text-brand-ink/50">
+                              {formatShortDate(p.createdAt)}
+                            </p>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </td>
+
+                      {/* Campaign */}
+                      <td className="px-3 py-3">
+                        <p className="truncate text-xs text-brand-ink/70" title={p.campaign}>{p.campaign}</p>
+                      </td>
+
+                      {/* Leads */}
+                      <td className="px-3 py-3 text-right text-xs font-semibold tabular-nums">{p.leads}</td>
+
+                      {/* Engagement */}
+                      <td className="px-3 py-3">
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
+                          <Heart size={10} /> {p.engagement}%
+                        </span>
+                      </td>
+
+                      {/* Enquiries */}
+                      <td className="px-3 py-3 text-right text-xs tabular-nums">{p.enquiries}</td>
+
+                      {/* Qualified */}
+                      <td className="px-3 py-3 text-right text-xs tabular-nums text-brand-purple font-medium">{p.qualified}</td>
+
+                      {/* Conversions */}
+                      <td className="px-3 py-3 text-right text-xs tabular-nums text-emerald-600 font-medium">{p.converted}</td>
+
+                      {/* Actions - Centered */}
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => openView(p)}
+                            className="flex h-7 items-center gap-1 rounded-lg border border-brand-lilac bg-white px-2 text-[10px] font-semibold text-brand-ink transition-all hover:border-brand-magenta/40 hover:bg-brand-magenta/5 hover:text-brand-magenta"
+                            title="View details"
+                          >
+                            <Eye size={11} /> View
+                          </button>
+                          <button
+                            onClick={() => openEdit(p)}
+                            className="flex h-7 items-center gap-1 rounded-lg bg-gradient-to-r from-brand-magenta to-brand-purple px-2 text-[10px] font-semibold text-white shadow-card transition-all hover:brightness-110"
+                            title="Edit post"
+                          >
+                            <Pencil size={10} /> Edit
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -635,9 +626,11 @@ export default function SocialMedia() {
           <PostDetailDrawer
             post={viewing}
             onClose={() => setViewing(null)}
-            onEdit={() => { setEditing(viewing); setViewing(null); setShowModal(true); }}
-            onStatusChange={(s) => { handleStatusChange(viewing.id, s); setViewing(null); }}
+            onEdit={() => { const p = viewing; setViewing(null); openEdit(p); }}
+            onDuplicate={() => { handleDuplicate(viewing); setViewing(null); }}
+            onStatusChange={(s) => handleStatusChange(viewing.id, s)}
             onConnect={handleConnect}
+            onDelete={() => { const p = viewing; setViewing(null); setConfirmDelete(p); }}
           />
         )}
 
@@ -703,8 +696,9 @@ function useAnimatedCount(target, duration = 600) {
   const rafRef = useRef(null);
 
   useEffect(() => {
-    startRef.current = null;
     const to = Number(target) || 0;
+    if (to <= 0) { setDisplay(0); return undefined; }
+    startRef.current = null;
     const tick = (now) => {
       if (startRef.current === null) startRef.current = now;
       const elapsed = now - startRef.current;
@@ -717,7 +711,7 @@ function useAnimatedCount(target, duration = 600) {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [target, duration]);
 
-  return display.toLocaleString();
+  return display.toLocaleString('en-IN');
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -761,7 +755,7 @@ function DropdownFilter({ label, icon: Icon, value, options, open, onToggle, onC
 /* ═══════════════════════════════════════════════════════════════
    POST CARD (GRID)
    ═══════════════════════════════════════════════════════════════ */
-function PostCard({ post: p, isLast, menuOpenId, setMenuOpenId, onView, onEdit, onDelete, onDuplicate, onStatusChange, onConnect }) {
+function PostCard({ post: p, onView, onEdit }) {
   const st = STATUS_STYLES[p.status] || STATUS_STYLES.Active;
   const StatusIcon = st.icon;
   const PlatformIcon = PLATFORM_ICONS[p.platform] || Globe;
@@ -791,45 +785,6 @@ function PostCard({ post: p, isLast, menuOpenId, setMenuOpenId, onView, onEdit, 
             <StatusIcon size={10} className="mr-1 inline" />
             {p.status}
           </span>
-
-          <div className="relative">
-            <button
-              onClick={() => setMenuOpenId(menuOpenId === p.id ? null : p.id)}
-              className="shrink-0 rounded-lg p-1.5 text-brand-ink/40 transition-colors hover:bg-brand-lilac"
-            >
-              <MoreVertical size={14} />
-            </button>
-            {menuOpenId === p.id && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-                <div className={`absolute right-0 ${isLast ? 'bottom-full mb-2' : 'top-full mt-2'} z-30 max-h-72 w-52 overflow-y-auto no-scrollbar rounded-xl border border-brand-lilac bg-white p-1 shadow-panel`}>
-                  <MenuItem icon={Eye}     label="View Details" onClick={() => { onView(); setMenuOpenId(null); }} />
-                  <MenuItem icon={Pencil}  label="Edit Post"    onClick={() => { onEdit(); setMenuOpenId(null); }} />
-                  <MenuItem icon={Copy}    label="Duplicate"    onClick={() => onDuplicate()} />
-                  <MenuItem icon={Radio}   label="Connect Platform" onClick={() => { onConnect(p.platform); setMenuOpenId(null); }} />
-                  <div className="my-1 h-px bg-brand-lilac/60" />
-                  <p className="px-3 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-brand-ink/40">Set Status</p>
-                  {POST_STATUSES.map((stt) => {
-                    const cs = STATUS_STYLES[stt];
-                    const SIcon = cs.icon;
-                    return (
-                      <button
-                        key={stt}
-                        onClick={() => onStatusChange(p.id, stt)}
-                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs ${
-                          p.status === stt ? 'bg-brand-magenta/10 font-semibold text-brand-magenta' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-                        }`}
-                      >
-                        <SIcon size={12} /> {stt}
-                      </button>
-                    );
-                  })}
-                  <div className="my-1 h-px bg-brand-lilac/60" />
-                  <MenuItem icon={Trash2}  label="Delete"    danger onClick={() => { onDelete(); setMenuOpenId(null); }} />
-                </div>
-              </>
-            )}
-          </div>
         </div>
 
         <div className="mt-4 space-y-2 rounded-xl border border-brand-lilac/60 bg-gradient-to-br from-brand-mist/80 to-brand-mist/40 p-3 text-xs">
@@ -896,7 +851,7 @@ function MiniBox({ label, value, tone = 'purple' }) {
   return (
     <div className={`flex flex-col items-center justify-center rounded-xl border ${tones[tone] || tones.purple} px-2 py-2.5`}>
       <p className="font-display text-base font-bold tabular-nums leading-none">
-        {typeof value === 'number' ? value.toLocaleString() : value}
+        {typeof value === 'number' ? value.toLocaleString('en-IN') : value}
       </p>
       <p className="mt-1 font-mono text-[9px] uppercase tracking-wider opacity-70">{label}</p>
     </div>
@@ -928,22 +883,6 @@ function ProgressBar({ label, value, tone = 'purple' }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MENU ITEM
-   ═══════════════════════════════════════════════════════════════ */
-function MenuItem({ icon: Icon, label, onClick, danger }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${
-        danger ? 'text-rose-500 hover:bg-rose-50' : 'text-brand-ink/70 hover:bg-brand-lilac/40'
-      }`}
-    >
-      <Icon size={14} /> {label}
-    </button>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
    POST MODAL (Create/Edit)
    ═══════════════════════════════════════════════════════════════ */
 function PostModal({ mode = 'create', initial = null, onClose, onSubmit }) {
@@ -964,8 +903,10 @@ function PostModal({ mode = 'create', initial = null, onClose, onSubmit }) {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const postRef = useRef(null);
+  const submitTimerRef = useRef(null);
 
   useEffect(() => { postRef.current?.focus(); }, []);
+  useEffect(() => () => { if (submitTimerRef.current) clearTimeout(submitTimerRef.current); }, []);
 
   const validate = () => {
     if (!form.post.trim()) return 'Post/content title is required.';
@@ -980,7 +921,8 @@ function PostModal({ mode = 'create', initial = null, onClose, onSubmit }) {
     if (err) { setError(err); return; }
     setError('');
     setSubmitting(true);
-    setTimeout(() => {
+    if (submitTimerRef.current) clearTimeout(submitTimerRef.current);
+    submitTimerRef.current = setTimeout(() => {
       setSubmitting(false);
       onSubmit({
         ...form,
@@ -1137,7 +1079,7 @@ function ModalInput({ label, type = 'text', value, onChange, placeholder, icon: 
 /* ═══════════════════════════════════════════════════════════════
    POST DETAIL DRAWER
    ═══════════════════════════════════════════════════════════════ */
-function PostDetailDrawer({ post: p, onClose, onEdit, onStatusChange, onConnect }) {
+function PostDetailDrawer({ post: p, onClose, onEdit, onDuplicate, onStatusChange, onConnect, onDelete }) {
   const st = STATUS_STYLES[p.status] || STATUS_STYLES.Active;
   const StatusIcon = st.icon;
   const PlatformIcon = PLATFORM_ICONS[p.platform] || Globe;
@@ -1186,7 +1128,7 @@ function PostDetailDrawer({ post: p, onClose, onEdit, onStatusChange, onConnect 
           </div>
 
           <div className="card !p-5 space-y-3">
-            <SectionTitle icon={Briefcase} label="Post Information" />
+            <SectionTitle icon={Activity} label="Post Information" />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <InfoRow icon={Globe}         label="Platform"     value={p.platform} />
               <InfoRow icon={Megaphone}     label="Campaign"     value={p.campaign} />
@@ -1229,27 +1171,42 @@ function PostDetailDrawer({ post: p, onClose, onEdit, onStatusChange, onConnect 
             </div>
           </div>
 
-          <button
-            onClick={() => onConnect(p.platform)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 py-2.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-100"
-          >
-            <Radio size={13} /> Connect {p.platform} for Auto-Capture
-          </button>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={onEdit}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple py-2.5 text-xs font-semibold text-white shadow-card hover:brightness-110"
-            >
-              <Pencil size={13} /> Edit Post
-            </button>
-            <button
-              onClick={onClose}
-              className="flex items-center justify-center gap-1.5 rounded-xl border border-brand-lilac bg-white py-2.5 text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40"
-            >
-              Close
-            </button>
+          <div className="card !p-5">
+            <SectionTitle icon={Radio} label="Actions" />
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={onEdit}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-brand-magenta to-brand-purple px-3 py-2 text-xs font-semibold text-white shadow-card hover:brightness-110"
+              >
+                <Pencil size={12} /> Edit Post
+              </button>
+              <button
+                onClick={onDuplicate}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-brand-purple hover:bg-violet-100"
+              >
+                <Copy size={12} /> Duplicate
+              </button>
+              <button
+                onClick={() => onConnect(p.platform)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-600 hover:bg-emerald-100"
+              >
+                <Radio size={12} /> Connect {p.platform}
+              </button>
+              <button
+                onClick={onDelete}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-500 hover:bg-rose-100"
+              >
+                <Trash2 size={12} /> Delete
+              </button>
+            </div>
           </div>
+
+          <button
+            onClick={onClose}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-brand-lilac bg-white py-2.5 text-xs font-semibold text-brand-ink hover:bg-brand-lilac/40"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
@@ -1270,7 +1227,7 @@ function DetailStat({ icon: Icon, label, value, color = 'purple' }) {
         <Icon size={12} />
       </div>
       <p className="mt-1 truncate font-display text-lg font-bold tabular-nums">
-        {typeof value === 'number' ? value.toLocaleString() : value}
+        {typeof value === 'number' ? value.toLocaleString('en-IN') : value}
       </p>
     </div>
   );
